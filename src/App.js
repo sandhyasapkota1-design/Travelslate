@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useRef } from "react";
 
 // ─── MOCK DATA ───────────────────────────────────────────────────────────────
@@ -697,14 +698,7 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
           <div style={{ color: "#93c5fd", fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{entry.privateNote}</div>
         </div>
       )}
-      {entry.tags && !compact && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-          {entry.tags.map(t => (
-            <span key={t} style={{ background: "#1a1a1a", color: "#666", border: "1px solid #333",
-              borderRadius: "20px", padding: "2px 9px", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>#{t}</span>
-          ))}
-        </div>
-      )}
+
       {user && (
         <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid #efefef", paddingTop: 10 }}>
           <span style={{ fontSize: 14 }}>{user.avatar}</span>
@@ -834,15 +828,7 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
         </div>
       )}
 
-      {/* Tags */}
-      {activity.tags && !compact && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-          {activity.tags.map(t => (
-            <span key={t} style={{ background: "#1a1a1a", color: "#666", border: "1px solid #333",
-              borderRadius: "20px", padding: "2px 9px", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>#{t}</span>
-          ))}
-        </div>
-      )}
+
 
       {/* User attribution */}
       {user && (
@@ -1326,7 +1312,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                 <input type="number" min="1" value={manualDays} onChange={e => {
                   const n = parseInt(e.target.value) || 1;
                   setManualDays(e.target.value);
-                  if (!manualGenerated) setManualSections(Array.from({length: n}, (_, i) => manualSections[i] || { id: "s" + (i+1), name: `Day ${i+1}`, items: [] }));
+                  setManualSections(Array.from({length: n}, (_, i) => manualSections[i] || { id: "s" + (i+1), name: `Day ${i+1}`, notes: "", items: [] }));
                 }}
                   placeholder="3"
                   style={{ width: 70, background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
@@ -1360,7 +1346,11 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                   </button>
                 )}
                 {!manualNotes.trim() && (
-                  <button onClick={() => setManualGenerated(true)}
+                  <button onClick={() => {
+                    const n = parseInt(manualDays) || 3;
+                    setManualSections(Array.from({length: n}, (_, i) => ({ id: "s" + (i+1), name: `Day ${i+1}`, notes: "", items: [] })));
+                    setManualGenerated(true);
+                  }}
                     style={{ marginTop: 8, width: "100%", background: "#f8f8f8", border: "1px solid #efefef",
                       borderRadius: 8, padding: "11px", color: "#555", fontSize: 14, cursor: "pointer" }}>
                     Skip — Build Manually
@@ -1975,12 +1965,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
                         )}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {(entry.tags || []).slice(0, 3).map(t => (
-                              <span key={t} style={{ color: "#888", fontSize: 10,
-                                background: "#f5f5f5", borderRadius: 20, padding: "2px 8px" }}>
-                                #{t}
-                              </span>
-                            ))}
+
                           </div>
                           {savedTrips && savedTrips.length > 0 && (
                             <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, entry); ev.target.value = ""; }}}
@@ -2654,18 +2639,6 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
-  const addDay = () => {
-    if (!onUpdate) return;
-    const newDay = { day: trip.plan.days.length + 1, city: trip.destination, activity: "Day " + (trip.plan.days.length + 1), sectionNotes: "", entries: [] };
-    onUpdate({ ...trip, days: trip.plan.days.length + 1, plan: { ...trip.plan, days: [...trip.plan.days, newDay] } });
-  };
-
-  const removeDay = (dayIdx) => {
-    if (!onUpdate) return;
-    const newDays = trip.plan.days.filter((_, i) => i !== dayIdx).map((d, i) => ({ ...d, day: i + 1 }));
-    onUpdate({ ...trip, days: newDays.length, plan: { ...trip.plan, days: newDays } });
-  };
-
   const moveDay = (dayIdx, dir) => {
     if (!onUpdate) return;
     const days = [...trip.plan.days];
@@ -2813,7 +2786,7 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
                       style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, padding: "0 2px" }}>✕</button>
                   </>
                 ) : (
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>Day {day.day} — {day.activity || day.city}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>{day.activity && day.activity !== `Day ${day.day}` ? `Day ${day.day} — ${day.activity}` : `Day ${day.day}`}{!day.activity && day.city ? ` — ${day.city}` : ""}</div>
                 )}
                 {editing && (
                   <button onClick={() => deleteDay(dayIdx)}
@@ -2850,7 +2823,6 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 14 }}>{{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}</span>
                     <span style={{ fontSize: 14, fontWeight: 500, color: "#000", flex: 1 }}>{e.name}</span>
-                    {!editing && <VerdictBadge verdict={e.verdict} />}
                     {editing && (
                       <button onClick={ev => { ev.stopPropagation(); removePlace(dayIdx, e.id); }}
                         style={{ background: "#fee2e2", border: "none", borderRadius: 6,
@@ -3797,7 +3769,7 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
         <div style={{ display: "flex", gap: 0, marginBottom: 24, background: "#111", borderRadius: 8, padding: 3 }}>
           {[["signup", "Sign Up"], ["login", "Sign In"]].map(([id, label]) => (
             <button key={id} onClick={() => { setMode(id); setError(""); }}
-              style={{ flex: 1, background: mode === id ? "#e8c84a" : "transparent",
+              style={{ flex: 1, background: mode === id ? "#000" : "transparent",
                 border: "none", borderRadius: 6, padding: "10px", cursor: "pointer",
                 color: mode === id ? "#0a0a0a" : "#555",
                 fontSize: 13, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: mode === id ? 700 : 400,
