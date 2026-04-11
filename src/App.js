@@ -3766,12 +3766,12 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
         </div>
 
         {/* Mode toggle */}
-        <div style={{ display: "flex", gap: 0, marginBottom: 24, background: "#111", borderRadius: 8, padding: 3 }}>
+        <div style={{ display: "flex", gap: 0, marginBottom: 24, background: "#f0f0f0", borderRadius: 8, padding: 3 }}>
           {[["signup", "Sign Up"], ["login", "Sign In"]].map(([id, label]) => (
             <button key={id} onClick={() => { setMode(id); setError(""); }}
               style={{ flex: 1, background: mode === id ? "#000" : "transparent",
                 border: "none", borderRadius: 6, padding: "10px", cursor: "pointer",
-                color: mode === id ? "#0a0a0a" : "#555",
+                color: mode === id ? "#fff" : "#888",
                 fontSize: 13, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: mode === id ? 700 : 400,
                 transition: "all 0.2s" }}>
               {label}
