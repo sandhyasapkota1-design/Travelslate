@@ -1309,7 +1309,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
         {/* MANUAL MODE */}
         {mode === "manual" && (
           <div>
-            <button onClick={() => { setMode(null); setManualGenerated(false); setManualNotes(""); setManualError(""); setPastePlan(null); setPasteError(""); }}
+            <button onClick={() => { setMode(null); setManualGenerated(false); setManualNotes(""); setManualError(""); }}
               style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, padding: 0, marginBottom: 16 }}>← Back</button>
 
             {/* Destination + Days */}
@@ -1897,7 +1897,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
             const entry = [...MOCK_ENTRIES, ...entries].find(e => e.id === act.entryId);
             if (!user) return null;
             const accentColor = ACTION_COLOR[act.type] || "#666";
-            void idx === 0 || filtered[idx-1]?.userId !== act.userId;
+            const _isFirst = idx === 0 || filtered[idx-1]?.userId !== act.userId;
 
             return (
               <div key={act.id}>
