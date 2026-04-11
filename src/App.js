@@ -460,83 +460,8 @@ const MOCK_ACTIVITIES = [
   }
 ];
 
-const MOCK_ACTIVITY = [
-  { id: "a1", userId: "u2", type: "log", entryId: "e10", timeAgo: "2h ago", text: "logged a new place" },
-  { id: "a2", userId: "u3", type: "log", entryId: "e15", timeAgo: "5h ago", text: "logged a new place" },
-  { id: "a3", userId: "u2", type: "verdict", entryId: "e10", timeAgo: "2h ago", text: "marked as MUST GO" },
-  { id: "a4", userId: "u3", type: "trip", entryId: null, timeAgo: "1d ago", text: "planned a trip to Ouray, CO" },
-  { id: "a5", userId: "u2", type: "dish", entryId: "e11", timeAgo: "2d ago", text: "added a dish tip to" },
-];
 
 // ─── TRAVEL DIARY MOCK DATA ─────────────────────────────────────────────────
-const MOCK_DIARY = [
-  {
-    id: "d1", userId: "u1",
-    title: "Summit County Weekend",
-    city: "Breckenridge", state: "CO", country: "USA",
-    dateFrom: "2025-12-13", dateTo: "2025-12-15",
-    story: "Finally made it to Breck for a proper ski weekend. Hit the slopes on Peak 9 Saturday morning — fresh powder from the night before. Stopped at Clint's Bakery for the cinnamon roll everyone raves about and it did NOT disappoint. Drove to Frisco for Outer Range after — the hazy IPA with mountain views was the perfect end to the day. Sunday was a lazy hot chocolate and Main Street shopping kind of day. Already planning the next trip.",
-    budget: "$650 (lodging, lift tickets, food, gas)",
-    photos: [],
-    linkedEntries: ["e26", "e27"],
-    tags: ["ski trip", "breckenridge", "frisco", "winter"]
-  },
-  {
-    id: "d2", userId: "u1",
-    title: "Aurora Food Crawl",
-    city: "Aurora", state: "CO", country: "USA",
-    dateFrom: "2025-11-08", dateTo: "2025-11-08",
-    story: "Decided to do a proper food tour of my own backyard. Started at Pearl of Siam for Pad See Ew — the wok char on that dish is unmatched. Then walked over to El Metate for a couple al pastor tacos. Finished the afternoon with a cortado at Endless Grind and some journal time. Sometimes you don't need to leave town to have an adventure. Aurora has so much underrated food and I want Travel Slate to help people see that.",
-    budget: "$45 (food + coffee)",
-    photos: [],
-    linkedEntries: ["e1", "e2", "e4"],
-    tags: ["food crawl", "aurora", "local", "solo"]
-  },
-  {
-    id: "d3", userId: "u1",
-    title: "Golden Day Trip — Sherpa House & Lookout Mountain",
-    city: "Golden", state: "CO", country: "USA",
-    dateFrom: "2025-10-19", dateTo: "2025-10-19",
-    story: "Drove out to Golden on a perfect fall day. The aspens on Lookout Mountain Road were glowing. Stopped at the Buffalo Bill Museum overlook — you can see Denver, the plains, and the mountains all at once. Then headed to Sherpa House for momos and chow mein. Ordering in Nepali made the server smile. It tasted like home. These are the days that remind me why I moved to Colorado.",
-    budget: "$35 (food + gas)",
-    photos: [],
-    linkedEntries: ["e3"],
-    tags: ["day trip", "golden", "fall colors", "nepali food"]
-  },
-  {
-    id: "d4", userId: "u1",
-    title: "Denver Date Night — Rioja & Larimer Square",
-    city: "Denver", state: "CO", country: "USA",
-    dateFrom: "2025-09-27", dateTo: "2025-09-27",
-    story: "Anniversary dinner at Rioja. We sat on the back patio — string lights, cool fall air, a bottle of Tempranillo. The patatas bravas were crispy perfection and the gambas al ajillo actually made me close my eyes. After dinner we walked Larimer Square and got gelato at Gelato Boy. Denver knows how to do a date night.",
-    budget: "$180 (dinner + drinks + gelato)",
-    photos: [],
-    linkedEntries: ["e5"],
-    tags: ["date night", "anniversary", "denver", "fine dining"]
-  },
-  {
-    id: "d5", userId: "u1",
-    title: "Boulder Adventure — Royal Arch & Dushanbe Tea House",
-    city: "Boulder", state: "CO", country: "USA",
-    dateFrom: "2025-08-10", dateTo: "2025-08-10",
-    story: "Early morning hike up Royal Arch from Chautauqua. The scramble at the end is no joke but the natural stone arch framing the Flatirons is breathtaking. Came down and drove to Avery Brewing for a celebratory Maharaja IPA and pretzel bites. Boulder never gets old.",
-    budget: "$40 (food + beer)",
-    photos: [],
-    linkedEntries: ["e6"],
-    tags: ["hiking", "boulder", "brewery", "day trip"]
-  },
-  {
-    id: "d6", userId: "u1",
-    title: "Great Sand Dunes Camping",
-    city: "Mosca", state: "CO", country: "USA",
-    dateFrom: "2025-07-04", dateTo: "2025-07-06",
-    story: "Fourth of July at the Sand Dunes. Drove down from Aurora — about 4 hours. Set up camp at Piñon Flats. The dunes at sunset are surreal — the light turns them pink and gold. Kids were playing in Medano Creek which was still flowing. Brought the sandboards and it was the most fun I've had in months. Star-gazing at night was incredible — Milky Way so clear you could see the dust lanes. This place is a Colorado treasure that most people skip.",
-    budget: "$220 (camping, gas, food, sandboard rental)",
-    photos: [],
-    linkedEntries: [],
-    tags: ["camping", "national park", "stargazing", "July 4th", "sand dunes"]
-  }
-];
 
 // Discoverable users (not yet friends)
 const MOCK_DISCOVER = [
@@ -569,11 +494,6 @@ const POPULAR_PLACES = {
 };
 
 // ─── NEARBY / RECENTLY VISITED SUGGESTIONS ───────────────────────────────────
-const NEARBY_SUGGESTIONS = [
-  { id: "n1", name: "Sherpa House", city: "Golden", state: "CO", type: "restaurant", cuisine: "Nepali / Tibetan", emoji: "🍽" },
-  { id: "n2", name: "Endless Grind Coffee", city: "Aurora", state: "CO", type: "cafe", cuisine: "Coffee", emoji: "☕" },
-  { id: "n3", name: "Stanley Marketplace", city: "Aurora", state: "CO", type: "activity", cuisine: "Market", emoji: "🏔" },
-];
 
 
 
@@ -1236,12 +1156,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
   const [mode, setMode] = useState(null); // null | "quick" | "manual" | "paste"
   const [step, setStep] = useState(0);
   // Paste notes state
-  const [pasteNotes, setPasteNotes] = useState("");
-  const [pasteDestination, setPasteDestination] = useState("");
-  const [pasteDays, setPasteDays] = useState("3");
-  const [pasteLoading, setPasteLoading] = useState(false);
-  const [pastePlan, setPastePlan] = useState(null);
-  const [pasteError, setPasteError] = useState("");
+
   const [prefs, setPrefs] = useState({ destination: "Colorado", days: 3, kids: false, types: [], invitedFriends: [] });
   const [plan, setPlan] = useState(null);
   // Manual plan state
@@ -1256,37 +1171,6 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
 
   const CITIES = [...new Set(entries.map(e => e.city))];
 
-  const generateFromNotes = async () => {
-    if (!pasteNotes.trim()) return;
-    setPasteLoading(true);
-    setPasteError("");
-    setPastePlan(null);
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: "Organize these travel notes into a " + pasteDays + "-day itinerary for " + (pasteDestination || "the destination") + ".\n\nNotes:\n" + pasteNotes + "\n\nReturn ONLY a JSON object, no explanation, no markdown:\n{\"destination\":\"city name\",\"days\":[{\"day\":1,\"title\":\"Day 1 title\",\"items\":[{\"name\":\"Place name\",\"type\":\"restaurant\",\"note\":\"brief tip\"}]}]}"
-          }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.[0]?.text || "";
-      if (data.error) throw new Error(data.error.message);
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (!parsed.days) throw new Error("Invalid plan structure");
-      setPastePlan(parsed);
-    } catch (err) {
-      setPasteError("Something went wrong. Try again or simplify your notes.");
-    }
-    setPasteLoading(false);
-  };
 
   const generateFromManualNotes = async () => {
     if (!manualNotes.trim()) return;
@@ -2013,7 +1897,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
             const entry = [...MOCK_ENTRIES, ...entries].find(e => e.id === act.entryId);
             if (!user) return null;
             const accentColor = ACTION_COLOR[act.type] || "#666";
-            const isFirst = idx === 0 || filtered[idx-1]?.userId !== act.userId;
+            void idx === 0 || filtered[idx-1]?.userId !== act.userId;
 
             return (
               <div key={act.id}>
@@ -2134,7 +2018,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
 
 // ─── NETWORK TAB ─────────────────────────────────────────────────────────────
 function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming }) {
-  const [search, setSearch] = useState("");
+  const [search] = useState("");
   const [networkSection, setNetworkSection] = useState("friends"); // friends | activity | discover
   const allUsers = [...MOCK_USERS.slice(1), ...MOCK_DISCOVER];
   const friends = allUsers.filter(u => friendState[u.id] === "friend");
@@ -2741,9 +2625,7 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
 function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onShare }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [search, setSearch] = useState("");
-  const friends = allUsers ? allUsers.filter(u => friendState && friendState[u.id] === "friend") : [];
-
+  const [search] = useState("");
   const removePlace = (dayIdx, entryId) => {
     if (!onUpdate) return;
     const newDays = trip.plan.days.map((d, i) =>
@@ -2752,19 +2634,8 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
-  const addToDay = (dayIdx, entry) => {
-    if (!onUpdate) return;
-    const newDays = trip.plan.days.map((d, i) =>
-      i === dayIdx ? { ...d, entries: [...(d.entries || d.items || []), { ...entry, id: "ta_" + Date.now() }] } : d
-    );
-    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
-  };
-
   const allEntries = entries ? entries.filter(e => e.userId !== "u1" || e.isActivity) : [];
-  const searchResults = search.trim().length >= 2
-    ? allEntries.filter(e => e.name?.toLowerCase().includes(search.toLowerCase()) || e.city?.toLowerCase().includes(search.toLowerCase())).slice(0, 5)
-    : [];
-  const friends2 = allUsers ? allUsers.filter(u => friendState && friendState[u.id] === "friend") : [];
+
 
   return (
     <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
@@ -3180,7 +3051,6 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
   const [logsCategory, setLogsCategory] = useState("all");
   const [logsSearch, setLogsSearch] = useState("");
   const [importResult, setImportResult] = useState(null);
-  const fileInputRef = useRef(null);
   const myEntries = entries.filter(e => e.userId === "u1");
 
   const parseAllTrailsCSV = (text) => {
