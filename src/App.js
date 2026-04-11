@@ -2020,7 +2020,8 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
 function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming }) {
   const [search] = useState("");
 const [networkSection, setNetworkSection] = useState("friends"); // friends | activity | discover
-  const [search, setSearch] = useState("");  const allUsers = [...MOCK_USERS.slice(1), ...MOCK_DISCOVER];
+  const [search, setSearch] = useState("");  
+  const allUsers = [...MOCK_USERS.slice(1), ...MOCK_DISCOVER];
   const friends = allUsers.filter(u => friendState[u.id] === "friend");
   const pendingOutgoing = allUsers.filter(u => friendState[u.id] === "pending");
 
