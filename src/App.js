@@ -1,4 +1,3 @@
-/* eslint-disable */
 import { useState, useRef } from "react";
 
 // ─── MOCK DATA ───────────────────────────────────────────────────────────────
@@ -2627,12 +2626,54 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [search] = useState("");
+  const addDay = () => {
+    if (!onUpdate) return;
+    const newDay = {
+      day: trip.plan.days.length + 1,
+      city: trip.destination,
+      activity: `Day ${trip.plan.days.length + 1}`,
+      sectionNotes: "",
+      entries: []
+    };
+    onUpdate({ ...trip, days: trip.plan.days.length + 1, plan: { ...trip.plan, days: [...trip.plan.days, newDay] } });
+  };
+
+  const deleteDay = (dayIdx) => {
+    if (!onUpdate) return;
+    const newDays = trip.plan.days
+      .filter((_, i) => i !== dayIdx)
+      .map((d, i) => ({ ...d, day: i + 1 }));
+    onUpdate({ ...trip, days: newDays.length, plan: { ...trip.plan, days: newDays } });
+  };
+
   const removePlace = (dayIdx, entryId) => {
     if (!onUpdate) return;
     const newDays = trip.plan.days.map((d, i) =>
       i === dayIdx ? { ...d, entries: (d.entries || d.items || []).filter(e => e.id !== entryId) } : d
     );
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+  };
+
+  const addDay = () => {
+    if (!onUpdate) return;
+    const newDay = { day: trip.plan.days.length + 1, city: trip.destination, activity: "Day " + (trip.plan.days.length + 1), sectionNotes: "", entries: [] };
+    onUpdate({ ...trip, days: trip.plan.days.length + 1, plan: { ...trip.plan, days: [...trip.plan.days, newDay] } });
+  };
+
+  const removeDay = (dayIdx) => {
+    if (!onUpdate) return;
+    const newDays = trip.plan.days.filter((_, i) => i !== dayIdx).map((d, i) => ({ ...d, day: i + 1 }));
+    onUpdate({ ...trip, days: newDays.length, plan: { ...trip.plan, days: newDays } });
+  };
+
+  const moveDay = (dayIdx, dir) => {
+    if (!onUpdate) return;
+    const days = [...trip.plan.days];
+    const target = dayIdx + dir;
+    if (target < 0 || target >= days.length) return;
+    [days[dayIdx], days[target]] = [days[target], days[dayIdx]];
+    const renumbered = days.map((d, i) => ({ ...d, day: i + 1 }));
+    onUpdate({ ...trip, plan: { ...trip.plan, days: renumbered } });
   };
 
   const allEntries = entries ? entries.filter(e => e.userId !== "u1" || e.isActivity) : [];
@@ -2746,13 +2787,64 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
 
           {trip.plan.days.map((day, dayIdx) => (
             <div key={day.day} style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                 <div style={{ background: "#000", color: "#fff", borderRadius: "50%", width: 24, height: 24,
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
                   {day.day}
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>Day {day.day} — {day.city}</div>
+                {editing ? (
+                  <>
+                    <input
+                      value={day.activity || ""}
+                      onChange={e => {
+                        if (!onUpdate) return;
+                        const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, activity: e.target.value } : d);
+                        onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+                      }}
+                      placeholder="Day title..."
+                      style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#000", border: "none",
+                        borderBottom: "1px solid #ddd", outline: "none", background: "transparent", padding: "2px 4px" }}
+                    />
+                    <button onClick={() => moveDay(dayIdx, -1)} disabled={dayIdx === 0}
+                      style={{ background: "none", border: "none", color: dayIdx === 0 ? "#ddd" : "#888", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>↑</button>
+                    <button onClick={() => moveDay(dayIdx, 1)} disabled={dayIdx === trip.plan.days.length - 1}
+                      style={{ background: "none", border: "none", color: dayIdx === trip.plan.days.length - 1 ? "#ddd" : "#888", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>↓</button>
+                    <button onClick={() => removeDay(dayIdx)}
+                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, padding: "0 2px" }}>✕</button>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>Day {day.day} — {day.activity || day.city}</div>
+                )}
+                {editing && (
+                  <button onClick={() => deleteDay(dayIdx)}
+                    style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px",
+                      fontSize: 11, color: "#ef4444", cursor: "pointer", flexShrink: 0 }}>
+                    Delete Day
+                  </button>
+                )}
               </div>
+              {editing ? (
+                <textarea
+                  value={day.sectionNotes || ""}
+                  onChange={e => {
+                    if (!onUpdate) return;
+                    const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, sectionNotes: e.target.value } : d);
+                    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+                  }}
+                  placeholder="Add notes for this day..."
+                  rows={2}
+                  style={{ width: "100%", fontSize: 12, color: "#555", border: "1px solid #efefef",
+                    borderRadius: 6, padding: "6px 10px", marginBottom: 8, resize: "none",
+                    outline: "none", boxSizing: "border-box", lineHeight: 1.5 }}
+                />
+              ) : (
+                day.sectionNotes && (
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 8, padding: "6px 10px",
+                    background: "#fff", borderRadius: 6, border: "1px solid #efefef", lineHeight: 1.5 }}>
+                    {day.sectionNotes}
+                  </div>
+                )
+              )}
               {(day.entries || day.items || []).map(e => (
                 <div key={e.id} style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", marginBottom: 4, border: "1px solid #efefef" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2790,11 +2882,18 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
             </div>
           ))}
           {editing && (
-            <button onClick={() => setEditing(false)}
-              style={{ width: "100%", background: "#000", border: "none", borderRadius: 8, padding: "10px",
-                color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 8 }}>
-              Done Editing
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              <button onClick={addDay}
+                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px",
+                  color: "#555", fontSize: 13, cursor: "pointer" }}>
+                + Add Day
+              </button>
+              <button onClick={() => setEditing(false)}
+                style={{ width: "100%", background: "#000", border: "none", borderRadius: 8, padding: "10px",
+                  color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Done Editing
+              </button>
+            </div>
           )}
         </div>
       )}
