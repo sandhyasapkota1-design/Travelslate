@@ -651,7 +651,7 @@ function VerdictBadge({ verdict }) {
 }
 
 // ─── ENTRY CARD ──────────────────────────────────────────────────────────────
-function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto }) {
+function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto, onViewProfile }) {
   const typeIcon = { restaurant: "🍽", brewery: "🍺", activity: "🏔", cafe: "☕" }[entry.type] || "📍";
   return (
     <div style={{
@@ -1703,57 +1703,87 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
 }
 
 // ─── PROFILE VIEW ────────────────────────────────────────────────────────────
-function ProfileView({ user, entries, onBack }) {
+function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
   const userEntries = entries.filter(e => e.userId === user.id);
-  const mustGo = userEntries.filter(e => e.verdict === "must_go");
   const cities = [...new Set(userEntries.map(e => e.city))];
+  const [selectedCity, setSelectedCity] = useState(null);
+  const filteredEntries = selectedCity ? userEntries.filter(e => e.city === selectedCity) : userEntries;
+  const mustGo = filteredEntries.filter(e => e.verdict === "must_go");
 
   return (
     <div>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: "#e8c84a", cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, marginBottom: 20, padding: 0 }}>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, marginBottom: 20, padding: 0 }}>
         ← Back
       </button>
-      <div style={{ background: "#111", border: "1px solid #222", borderRadius: 16, padding: 24, marginBottom: 24 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-          <div style={{ width: 56, height: 56, background: "#1a1a1a", border: "2px solid #e8c84a44", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>
+          <div style={{ width: 56, height: 56, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>
             {user.avatar}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#f5f0e8", fontSize: 22 }}>{user.name}</div>
-            <div style={{ color: "#666", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 12, marginBottom: 8 }}>@{user.username}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#000" }}>{user.name}</div>
+            <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>@{user.username}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {user.tags.map(t => <TravelerTag key={t} tag={t} />)}
             </div>
           </div>
         </div>
-        <div style={{ color: "#888", fontSize: 13, marginTop: 14, fontStyle: "italic", lineHeight: 1.5 }}>{user.bio}</div>
+<div style={{ color: "#888", fontSize: 13, marginTop: 14, lineHeight: 1.5 }}>{user.bio}</div>
         <div style={{ display: "flex", gap: 20, marginTop: 16 }}>
           {[["Trips", user.tripsCount],["Countries", user.countriesCount],["Cities", user.citiesCount]].map(([l,v]) => (
             <div key={l}>
-              <div style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 18, fontWeight: 700 }}>{v}</div>
-              <div style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>{l}</div>
+              <div style={{ color: "#000", fontSize: 18, fontWeight: 700 }}>{v}</div>
+              <div style={{ color: "#888", fontSize: 11 }}>{l}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
+      <div style={{ color: "#888", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
         Cities Visited
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+        {selectedCity && (
+          <button onClick={() => setSelectedCity(null)}
+            style={{ background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 6,
+              padding: "5px 12px", fontSize: 12, color: "#555", cursor: "pointer" }}>
+            × Clear filter
+          </button>
+        )}
         {cities.map(c => (
-          <span key={c} style={{ background: "#111", border: "1px solid #333", color: "#f5f0e8",
-            borderRadius: 6, padding: "5px 12px", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+          <button key={c} onClick={() => setSelectedCity(selectedCity === c ? null : c)}
+            style={{ background: selectedCity === c ? "#000" : "#f8f8f8",
+              border: `1px solid ${selectedCity === c ? "#000" : "#efefef"}`,
+              color: selectedCity === c ? "#fff" : "#555",
+              borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}>
             📍 {c}
-          </span>
+          </button>
         ))}
       </div>
 
-      <div style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-        Must-Go Picks ({mustGo.length})
+      <div style={{ color: "#888", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
+        {selectedCity ? `Must-Go in ${selectedCity} (${mustGo.length})` : `Must-Go Picks (${mustGo.length})`}
       </div>
+
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {mustGo.map(e => <EntryCard key={e.id} entry={e} />)}
+        {mustGo.map(e => (
+          <div key={e.id} style={{ position: "relative" }}>
+            <EntryCard entry={e} />
+            {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
+              <div style={{ position: "absolute", bottom: 12, right: 12 }}>
+                <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
+                  style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                  defaultValue="">
+                  <option value="" disabled>+ Trip</option>
+                  {savedTrips.filter(t => !t.completed).map(t => (
+                    <option key={t.id} value={t.id}>{t.destination}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -3536,7 +3566,7 @@ function MainApp({ user, onLogout }) {
     const profileUser = [...MOCK_USERS, ...MOCK_DISCOVER].find(u => u.id === viewProfile) || MOCK_USERS[1];
     return (
       <div style={{ minHeight: "100vh", background: "#fff", padding: "20px 16px", maxWidth: 600, margin: "0 auto" }}>
-        <ProfileView user={profileUser} entries={entries} onBack={() => setViewProfile(null)} />
+        <ProfileView user={profileUser} entries={entries} onBack={() => setViewProfile(null)} savedTrips={savedTrips} onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => { if (t.id !== tripId) return t; const updatedDays = t.plan?.days ? [...t.plan.days] : []; if (updatedDays.length === 0) updatedDays.push({ day: 1, city: t.destination, entries: [], activity: "" }); updatedDays[0] = { ...updatedDays[0], entries: [...updatedDays[0].entries, entry] }; return { ...t, plan: { ...t.plan, days: updatedDays } }; }))} />
       </div>
     );
   }
