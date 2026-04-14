@@ -1,5 +1,8 @@
-/* eslint-disable */
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 // ─── MOCK DATA ───────────────────────────────────────────────────────────────
 const MOCK_USERS = [
@@ -505,6 +508,130 @@ const ACTIVITY_SUGGESTIONS = {
 };
 
 
+// ─── SHARED HELPERS ──────────────────────────────────────────────────────────
+
+// All users combined (MOCK_USERS + discoverable users). Module-level constant
+// since neither array changes at runtime.
+const ALL_USERS = [...MOCK_USERS, ...MOCK_DISCOVER];
+
+// Parse a comma-separated tag string into a trimmed, non-empty array.
+const parseTags = str => str.split(",").map(t => t.trim()).filter(Boolean);
+
+const STATE_NAMES = {
+  "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
+  "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
+  "hawaii":"HI","idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA","kansas":"KS",
+  "kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD","massachusetts":"MA",
+  "michigan":"MI","minnesota":"MN","mississippi":"MS","missouri":"MO","montana":"MT",
+  "nebraska":"NE","nevada":"NV","new hampshire":"NH","new jersey":"NJ","new mexico":"NM",
+  "new york":"NY","north carolina":"NC","north dakota":"ND","ohio":"OH","oklahoma":"OK",
+  "oregon":"OR","pennsylvania":"PA","rhode island":"RI","south carolina":"SC",
+  "south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT","vermont":"VT",
+  "virginia":"VA","washington":"WA","west virginia":"WV","wisconsin":"WI","wyoming":"WY"
+};
+
+// Returns true if entry matches a lowercase search query against name/city/state/cuisine.
+// State matching supports both abbreviation ("CO") and full name ("colorado").
+function entryMatchesSearch(e, q) {
+  const stateAbbr = (e.state || "").toLowerCase();
+  const fullStateName = Object.keys(STATE_NAMES).find(k => STATE_NAMES[k] === e.state) || "";
+  const stateMatches = stateAbbr.includes(q) || fullStateName.includes(q);
+  return e.name.toLowerCase().includes(q) ||
+    e.city?.toLowerCase().includes(q) ||
+    stateMatches ||
+    (e.cuisine || "").toLowerCase().includes(q);
+}
+
+// Normalise and bulk-import all places from a trip plan into the user's log.
+function importTripToLogs(trip, setEntries, setImportToLogsMsg) {
+  const days = trip.plan?.days || [];
+  const tripEntries = days.flatMap(d => {
+    const items = d.entries || d.items || [];
+    return items.map((e, j) => ({
+      ...e,
+      id: "imp_" + (e.id || j) + "_" + Date.now(),
+      userId: "u1",
+      verdict: e.verdict || "must_go",
+      rating: e.rating || 0,
+      notes: e.notes || e.note || "",
+      tags: e.tags || [],
+      photos: [],
+      type: e.type || "activity",
+      city: e.city || trip.destination || "",
+      country: e.country || "USA"
+    }));
+  }).filter(e => e.name && e.name.trim());
+  setEntries(prev => [...tripEntries, ...prev]);
+  setImportToLogsMsg("✓ Imported " + tripEntries.length + " place" + (tripEntries.length !== 1 ? "s" : "") + " to My Logs!");
+  setTimeout(() => setImportToLogsMsg(""), 3000);
+}
+
+// Normalise and import a single trip entry into the user's log.
+function importSingleEntry(entry, setEntries, setImportToLogsMsg) {
+  setEntries(prev => [{
+    ...entry,
+    id: "imp_" + (entry.id || "") + "_" + Date.now(),
+    userId: "u1",
+    verdict: entry.verdict || "must_go",
+    rating: entry.rating || 0,
+    notes: entry.notes || "",
+    tags: entry.tags || [],
+    photos: [],
+    type: entry.type || "activity"
+  }, ...prev]);
+  setImportToLogsMsg("✓ Added " + entry.name + " to My Logs!");
+  setTimeout(() => setImportToLogsMsg(""), 2500);
+}
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
+
+// ─── DAY MAP + COPY BUTTONS ───────────────────────────────────────────────────
+const MAP_CAP = 10;
+function DayMapButton({ day }) {
+  const [copied, setCopied] = useState(false);
+  const places = (day.entries || day.items || []);
+  const capped = places.slice(0, MAP_CAP);
+
+  const mapUrl = "https://www.google.com/maps/dir/" +
+    capped.map(e => encodeURIComponent((e.name || "") + (e.city ? " " + e.city : ""))).join("/");
+
+  const copyText = (day.name || ("Day " + day.day)) + "\n" +
+    capped.map((e, i) => `${i + 1}. ${e.name}${e.city ? " — " + e.city : ""}${e.note || e.notes ? " (" + (e.note || e.notes) + ")" : ""}`).join("\n") +
+    (places.length > MAP_CAP ? `\n(+ ${places.length - MAP_CAP} more)` : "");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(copyText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (places.length === 0) return null;
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+      <a href={mapUrl} target="_blank" rel="noopener noreferrer"
+        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#f0f0f0", border: "none",
+          borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#555", textDecoration: "none",
+          cursor: "pointer" }}
+        title={places.length > MAP_CAP ? `Map shows first ${MAP_CAP} places` : undefined}>
+        🗺 Map{places.length > MAP_CAP ? ` (${MAP_CAP})` : ""}
+      </a>
+      <button onClick={handleCopy}
+        style={{ display: "inline-flex", alignItems: "center", gap: 5, background: copied ? "#e8f5e9" : "#f0f0f0",
+          border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11,
+          color: copied ? "#2e7d32" : "#555", cursor: "pointer" }}>
+        {copied ? "✓ Copied" : "📋 Copy"}
+      </button>
+      {places.length > MAP_CAP && (
+        <span style={{ fontSize: 11, color: "#aaa", alignSelf: "center" }}>
+          Map shows first {MAP_CAP} of {places.length} places
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ─── PHOTO GALLERY BUTTON + FULLSCREEN ───────────────────────────────────────
 function PhotoStrip({ photos }) {
   const [open, setOpen] = useState(false);
@@ -630,7 +757,7 @@ function StarRating({ value, onChange, size = 18 }) {
       {[1,2,3,4,5].map(s => (
         <span key={s} onClick={() => onChange && onChange(s)}
           style={{ fontSize: size, cursor: onChange ? "pointer" : "default",
-            color: s <= value ? "#e8c84a" : "#2a2a2a", transition: "color 0.15s" }}>★</span>
+            color: s <= value ? "#e8c84a" : "#ddd", transition: "color 0.15s" }}>★</span>
       ))}
     </div>
   );
@@ -639,29 +766,30 @@ function StarRating({ value, onChange, size = 18 }) {
 // ─── VERDICT BADGE ───────────────────────────────────────────────────────────
 function VerdictBadge({ verdict }) {
   const config = verdict === "must_go"
-    ? { label: "MUST GO", bg: "#14532d", color: "#4ade80", border: "#16a34a" }
-    : { label: "SKIP IT", bg: "#450a0a", color: "#f87171", border: "#dc2626" };
+    ? { label: "MUST GO", bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" }
+    : { label: "SKIP IT", bg: "#fee2e2", color: "#dc2626", border: "#fecaca" };
   return (
     <span style={{
       background: config.bg, color: config.color, border: `1px solid ${config.border}`,
-      borderRadius: "4px", padding: "2px 8px", fontSize: "10px",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: 700, letterSpacing: "0.08em"
+      borderRadius: "20px", padding: "2px 9px", fontSize: "10px",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: 700, letterSpacing: "0.06em"
     }}>{config.label}</span>
   );
 }
 
 // ─── ENTRY CARD ──────────────────────────────────────────────────────────────
-function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto, onViewProfile }) {
+function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto }) {
   const typeIcon = { restaurant: "🍽", brewery: "🍺", activity: "🏔", cafe: "☕" }[entry.type] || "📍";
   return (
     <div style={{
-      background: "#fff", border: "1px solid #efefef", borderRadius: "12px",
-      padding: compact ? "14px 16px" : "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-      transition: "border-color 0.2s, transform 0.2s",
+      background: "#fff", border: "1px solid #efefef", borderRadius: "14px",
+      padding: compact ? "14px 16px" : "18px 20px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.06), 0 0 0 0 transparent",
+      transition: "box-shadow 0.2s, transform 0.2s, border-color 0.2s",
       cursor: "default"
     }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = "#000"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = "#efefef"; e.currentTarget.style.transform = "none"; }}>
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.borderColor = "#ddd"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "none"; e.currentTarget.style.borderColor = "#efefef"; }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -683,7 +811,7 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
         <StarRating value={entry.rating} size={14} />
       </div>
       {entry.dish && (
-        <div style={{ marginTop: 8, color: "#e8c84a", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+        <div style={{ marginTop: 8, color: "#555", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
           ✦ {entry.dish}
         </div>
       )}
@@ -693,17 +821,20 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
         </div>
       )}
       {entry.privateNote && !compact && (
-        <div style={{ marginTop: 8, background: "#0d1a2e", border: "1px solid #1a3a5e", borderRadius: 6, padding: "8px 12px" }}>
-          <span style={{ color: "#60a5fa", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.08em" }}>🔒 PRIVATE NOTE</span>
-          <div style={{ color: "#93c5fd", fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{entry.privateNote}</div>
+        <div style={{ marginTop: 8, background: "#f0f7ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
+          <span style={{ color: "#3b82f6", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.08em", fontWeight: 700 }}>🔒 PRIVATE NOTE</span>
+          <div style={{ color: "#1d4ed8", fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{entry.privateNote}</div>
         </div>
       )}
-
       {user && (
-        <div onClick={ev => { ev.stopPropagation(); onViewProfile && onViewProfile(user.id); }}
-          style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid #efefef", paddingTop: 10, cursor: "pointer" }}>
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid #efefef", paddingTop: 10 }}>
           <span style={{ fontSize: 14 }}>{user.avatar}</span>
-          <span style={{ color: "#888", fontSize: 11 }}>@{user.username}</span>
+          <span
+            onClick={e => { e.stopPropagation(); user.onViewProfile && user.onViewProfile(user.id); }}
+            style={{ color: "#555", fontSize: 11, cursor: user.onViewProfile ? "pointer" : "default",
+              textDecoration: user.onViewProfile ? "underline" : "none" }}>
+            @{user.username}
+          </span>
           <div style={{ marginLeft: 4, display: "flex", gap: 4 }}>
             {user.tags.slice(0,1).map(t => <TravelerTag key={t} tag={t} />)}
           </div>
@@ -715,14 +846,16 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
         <PhotoStrip photos={entry.photos} />
       )}
 
-      {/* Edit / Private / Photo buttons — only for own entries */}
-      {!compact && onEdit && (
+      {/* Edit / Private / Photo buttons */}
+      {!compact && (onEdit || onAddPhoto) && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }}
-            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
-              color: "#555", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-            ✏️ Edit
-          </button>
+          {onEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }}
+              style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
+                color: "#555", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+              ✏️ Edit
+            </button>
+          )}
           {onTogglePrivate && (
             <button onClick={e => { e.stopPropagation(); onTogglePrivate(); }}
               style={{ background: isPrivate ? "#eff6ff" : "#f8f8f8",
@@ -731,6 +864,21 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
                 color: isPrivate ? "#3b82f6" : "#555", fontSize: 12, cursor: "pointer" }}>
               {isPrivate ? "🔒 Private" : "🌐 Public"}
             </button>
+          )}
+          {onAddPhoto && (
+            <label style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
+              color: "#555", fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              📷 Photo
+              <input type="file" accept="image/*" style={{ display: "none" }} onClick={e => e.stopPropagation()}
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => onAddPhoto(ev.target.result);
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }} />
+            </label>
           )}
         </div>
       )}
@@ -803,19 +951,19 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
         <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
           {activity.distance && (
             <div>
-              <div style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.distance}</div>
+              <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.distance}</div>
               <div style={{ color: "#555", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>DISTANCE</div>
             </div>
           )}
           {activity.elevation && (
             <div>
-              <div style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.elevation}</div>
+              <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.elevation}</div>
               <div style={{ color: "#555", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>ELEVATION</div>
             </div>
           )}
           {activity.elevGain && (
             <div>
-              <div style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.elevGain}</div>
+              <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, fontWeight: 600 }}>{activity.elevGain}</div>
               <div style={{ color: "#555", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>ELEV GAIN</div>
             </div>
           )}
@@ -830,12 +978,16 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
       )}
 
 
-
       {/* User attribution */}
       {user && (
         <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid #efefef", paddingTop: 10 }}>
           <span style={{ fontSize: 14 }}>{user.avatar}</span>
-          <span style={{ color: "#888", fontSize: 11 }}>@{user.username}</span>
+          <span
+            onClick={e => { e.stopPropagation(); user.onViewProfile && user.onViewProfile(user.id); }}
+            style={{ color: "#555", fontSize: 11, cursor: user.onViewProfile ? "pointer" : "default",
+              textDecoration: user.onViewProfile ? "underline" : "none" }}>
+            @{user.username}
+          </span>
           <div style={{ marginLeft: 4, display: "flex", gap: 4 }}>
             {user.tags.slice(0,1).map(t => <TravelerTag key={t} tag={t} />)}
           </div>
@@ -847,14 +999,16 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
         <PhotoStrip photos={activity.photos} />
       )}
 
-      {/* Edit / Private / Photo — own entries only */}
-      {!compact && onEdit && (
+      {/* Edit / Private / Photo */}
+      {!compact && (onEdit || onAddPhoto) && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }}
-            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
-              color: "#555", fontSize: 12, cursor: "pointer" }}>
-            ✏️ Edit
-          </button>
+          {onEdit && (
+            <button onClick={e => { e.stopPropagation(); onEdit(); }}
+              style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
+                color: "#555", fontSize: 12, cursor: "pointer" }}>
+              ✏️ Edit
+            </button>
+          )}
           {onTogglePrivate && (
             <button onClick={e => { e.stopPropagation(); onTogglePrivate(); }}
               style={{ background: isPrivate ? "#eff6ff" : "#f8f8f8",
@@ -863,6 +1017,21 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
                 color: isPrivate ? "#3b82f6" : "#555", fontSize: 12, cursor: "pointer" }}>
               {isPrivate ? "🔒 Private" : "🌐 Public"}
             </button>
+          )}
+          {onAddPhoto && (
+            <label style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
+              color: "#555", fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              📷 Photo
+              <input type="file" accept="image/*" style={{ display: "none" }} onClick={e => e.stopPropagation()}
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => onAddPhoto(ev.target.result);
+                  reader.readAsDataURL(file);
+                  e.target.value = "";
+                }} />
+            </label>
           )}
         </div>
       )}
@@ -873,9 +1042,19 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
 // ─── ADD ENTRY MODAL ─────────────────────────────────────────────────────────
 function AddEntryModal({ onClose, onSave, entries, prefill }) {
   const [form, setForm] = useState({
-    name: prefill?.name || "", city: prefill?.city || "", state: prefill?.state || "", country: prefill?.country || "USA",
-    type: prefill?.type || "restaurant", cuisine: prefill?.cuisine || "", dish: "",
-    rating: prefill?.rating || 0, verdict: prefill?.verdict || "must_go", notes: prefill?.notes || "", privateNote: "", tags: "", isPrivate: false
+    name: prefill?.name || "",
+    city: prefill?.city || "",
+    state: prefill?.state || "",
+    country: prefill?.country || "USA",
+    type: prefill?.type || "restaurant",
+    cuisine: prefill?.cuisine || "",
+    dish: prefill?.dish || "",
+    rating: prefill?.rating || 0,
+    verdict: prefill?.verdict || "must_go",
+    notes: prefill?.notes || prefill?.note || "",
+    privateNote: "",
+    tags: (prefill?.tags || []).join(", "),
+    isPrivate: false
   });
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -942,10 +1121,10 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ color: "#000", margin: 0, fontSize: 20, fontWeight: 700 }}>Log a Place</h2>
+          <h2 style={{ color: "#000", margin: 0, fontSize: 20, fontWeight: 700 }}>{prefill ? "Review & Log" : "Log a Place"}</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#aaa", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
 
@@ -1006,34 +1185,34 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>City</label>
             <input value={form.city} onChange={e => setForm(f => ({...f, city: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-                padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>State</label>
             <input value={form.state} onChange={e => setForm(f => ({...f, state: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-                padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Country</label>
             <input value={form.country} onChange={e => setForm(f => ({...f, country: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-                padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
         </div>
 
         <div style={{ marginTop: 14, marginBottom: 14 }}>
           <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Type</label>
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            {["restaurant","brewery","cafe","hotel","activity"].map(t => (
+            {["restaurant","brewery","cafe","activity"].map(t => (
               <button key={t} onClick={() => setForm(f => ({...f, type: t}))}
-                style={{ background: form.type === t ? "#00000022" : "#f8f8f8",
+                style={{ background: form.type === t ? "#000" : "#f8f8f8",
                   border: `1px solid ${form.type === t ? "#000" : "#efefef"}`,
-                  color: form.type === t ? "#000" : "#555",
+                  color: form.type === t ? "#fff" : "#555",
                   borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-                  fontSize: 12, textTransform: "capitalize" }}>
-                {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", hotel: "🏨", activity: "🏔" }[t]} {t}
+                  fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "capitalize" }}>
+                {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔" }[t]} {t}
               </button>
             ))}
           </div>
@@ -1052,9 +1231,9 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
           <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
             {[["must_go","MUST GO","#4ade80"],["skip","SKIP IT","#f87171"]].map(([v,l,c]) => (
               <button key={v} onClick={() => setForm(f => ({...f, verdict: v}))}
-                style={{ flex: 1, background: form.verdict === v ? c + "22" : "#111",
-                  border: `1px solid ${form.verdict === v ? c : "#333"}`,
-                  color: form.verdict === v ? c : "#666",
+                style={{ flex: 1, background: form.verdict === v ? c + "22" : "#f8f8f8",
+                  border: `1px solid ${form.verdict === v ? c : "#efefef"}`,
+                  color: form.verdict === v ? c : "#555",
                   borderRadius: 6, padding: "8px", cursor: "pointer",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: 700 }}>
                 {l}
@@ -1068,8 +1247,8 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
           <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
             placeholder="What made it special? What to avoid? Tips for others…"
             rows={3}
-            style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-              padding: "10px 12px", color: "#f5f0e8", fontSize: 13, marginTop: 4,
+            style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+              padding: "10px 12px", color: "#000", fontSize: 13, marginTop: 4,
               boxSizing: "border-box", outline: "none", resize: "vertical",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", lineHeight: 1.5 }} />
         </div>
@@ -1098,18 +1277,22 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
             📷 Add Photos
             <input type="file" accept="image/*" multiple style={{ display: "none" }}
               onChange={e => {
-                const files = Array.from(e.target.files);
+                const valid = Array.from(e.target.files).filter(
+                  f => ALLOWED_IMAGE_TYPES.includes(f.type) && f.size <= MAX_PHOTO_SIZE
+                );
                 const results = [];
                 let loaded = 0;
-                files.forEach((file, idx) => {
+                if (!valid.length) return;
+                valid.forEach((file, idx) => {
                   const reader = new FileReader();
                   reader.onload = ev => {
                     results[idx] = ev.target.result;
                     loaded++;
-                    if (loaded === files.length) {
+                    if (loaded === valid.length) {
                       setPhotos(p => [...p, ...results]);
                     }
                   };
+                  reader.onerror = () => { loaded++; };
                   reader.readAsDataURL(file);
                 });
               }} />
@@ -1122,7 +1305,7 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
             ...form,
             id: "e" + Date.now(), userId: "u1",
             photos,
-            tags: form.tags.split(",").map(t => t.trim()).filter(Boolean)
+            tags: parseTags(form.tags)
           };
           onSave(newEntry);
           onClose();
@@ -1139,19 +1322,33 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
 }
 
 // ─── TRIP PLANNER MODAL ──────────────────────────────────────────────────────
-function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTrip }) {
-  const [mode, setMode] = useState(null); // null | "quick" | "manual" | "paste"
-  const [step, setStep] = useState(0);
-  // Paste notes state
+const HARDCODED_API_KEY = ""; // ← local dev only, never commit
 
-  const [prefs, setPrefs] = useState({ destination: "Colorado", days: 3, kids: false, types: [], invitedFriends: [] });
+function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTrip, editTrip }) {
+  const isEditing = !!editTrip;
+  const [mode, setMode] = useState(isEditing ? "manual" : null); // null | "quick" | "manual"
+  const [step, setStep] = useState(0);
+
+  const [prefs, setPrefs] = useState({ destination: "Colorado", days: 3, kids: false, types: [], invitedFriends: [], startDate: "", endDate: "" });
   const [plan, setPlan] = useState(null);
-  // Manual plan state
-  const [manualDestination, setManualDestination] = useState("");
-  const [manualDays, setManualDays] = useState("3");
-  const [manualSections, setManualSections] = useState([{ id: "s1", name: "Day 1", notes: "", items: [] }, { id: "s2", name: "Day 2", notes: "", items: [] }, { id: "s3", name: "Day 3", notes: "", items: [] }]);
+  // Manual plan state — pre-fill from editTrip if editing
+  const [manualDestination, setManualDestination] = useState(isEditing ? (editTrip.destination || "") : "");
+  const [manualDays, setManualDays] = useState(isEditing ? String(editTrip.days || 3) : "3");
+  const [manualStartDate, setManualStartDate] = useState(isEditing ? (editTrip.startDate || "") : "");
+  const [manualEndDate, setManualEndDate] = useState(isEditing ? (editTrip.endDate || "") : "");
+  const [manualSections, setManualSections] = useState(() => {
+    if (isEditing && editTrip.plan?.days?.length) {
+      return editTrip.plan.days.map((d, i) => ({
+        id: "s" + (i + 1),
+        name: d.name || d.activity || `Day ${i + 1}`,
+        notes: d.sectionNotes || d.notes || "",
+        items: (d.entries || d.items || []).map(e => ({ ...e }))
+      }));
+    }
+    return Array.from({ length: 3 }, (_, i) => ({ id: "s" + (i + 1), name: `Day ${i + 1}`, items: [] }));
+  });
   const [manualSearch, setManualSearch] = useState("");
-  const [manualNotes, setManualNotes] = useState("");
+  const [manualNotes, setManualNotes] = useState(isEditing ? (editTrip.notes || "") : "");
   const [manualLoading, setManualLoading] = useState(false);
   const [manualError, setManualError] = useState("");
   const [manualGenerated, setManualGenerated] = useState(false);
@@ -1166,15 +1363,50 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
     try {
       const n = parseInt(manualDays) || 3;
       const dest = manualDestination || "the destination";
+      // TODO: Move this call to a backend proxy so the API key is never
+      // sent in browser network traffic. See: https://docs.anthropic.com/en/api/getting-started
+      const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
+      if (!apiKey) throw new Error("No API key — paste your sk-ant-... key into HARDCODED_API_KEY at the top of the file.");
+
+      // Include any places already manually added to sections
+      const existingPlaces = manualSections
+        .flatMap(s => (s.items || []).map(item => `${item.name}${item.city ? " (" + item.city + ")" : ""} — already assigned to ${s.name}`))
+        .join("\n");
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1500,
+          model: "claude-sonnet-4-6",
+          max_tokens: 2500,
           messages: [{
             role: "user",
-            content: "Organize these travel notes into a " + n + "-day itinerary for " + dest + ". Notes: " + manualNotes + " Return ONLY a JSON object, no explanation, no markdown, no backticks. Format: {days:[{id:'s1',name:'Day 1',items:[{id:'i1_1',name:'Place Name',type:'restaurant',note:'short tip',city:'" + dest + "',state:'',verdict:'must_go',cuisine:''}]}]}"
+            // User content is bracketed in XML tags so injected text cannot
+            // break out of the <user_notes> context and override instructions.
+            content: `You are an expert travel itinerary planner. Build a ${n}-day trip to ${dest} using the user's notes below.
+
+Instructions:
+1. Extract every place, restaurant, bar, attraction, or activity mentioned in the notes.
+2. Group places by neighborhood or geographic area — places within walking distance or a short drive belong on the same day to minimize driving.
+3. Name each day after its area: "Day 1 — Downtown & LoDo", "Day 2 — RiNo & Five Points", etc.
+4. Order days logically as a loop: start near the arrival area, explore outward, end near departure.
+5. 3–5 places per day, ordered by time of day: breakfast → lunch → afternoon activity → dinner → bar/evening.
+6. For each place infer: type (restaurant/cafe/brewery/bar/activity/hiking/shopping), cuisine if food, city if mentioned.
+7. If the user says "must go" or "highly recommend" for a place, set verdict to "must_go". Otherwise use "want_to_try".
+8. If the user specifies a day for a place ("on day 2, go to X"), honor it.
+9. If a city isn't mentioned for a place, default to ${dest}.
+10. Do not invent places not mentioned in the notes.${existingPlaces ? `\n11. These places are already in the plan — incorporate them into the appropriate day:\n${existingPlaces}` : ""}
+
+User notes:
+<user_notes>${manualNotes}</user_notes>
+
+Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Schema:
+{"days":[{"id":"s1","name":"Day 1 — Neighborhood Name","items":[{"id":"i1_1","name":"Place Name","type":"restaurant","note":"short tip from the notes","city":"City Name","state":"CO","verdict":"must_go","cuisine":"Italian"}]}]}`
           }]
         })
       });
@@ -1182,16 +1414,21 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
       if (data.error) throw new Error(data.error.message);
       const text = data.content?.[0]?.text || "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
+      if (!jsonMatch) throw new Error("AI response didn't contain valid JSON. Try simplifying your notes.");
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.days && parsed.days.length > 0) {
-        setManualSections(parsed.days);
+        setManualSections(parsed.days.map((d, i) => ({
+          id: d.id || ("s" + (i + 1)),
+          name: d.name || `Day ${i + 1}`,
+          notes: d.notes || d.sectionNotes || "",
+          items: (d.items || d.entries || []).map(e => ({ ...e }))
+        })));
         setManualGenerated(true);
       } else {
-        throw new Error("Empty plan returned");
+        throw new Error("AI returned an empty plan. Add more place names to your notes.");
       }
     } catch(err) {
-      setManualError("Could not generate itinerary. Try adding a destination and fewer notes, then try again.");
+      setManualError("Could not generate itinerary: " + (err.message || "Unknown error"));
     }
     setManualLoading(false);
   };
@@ -1254,8 +1491,8 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
     : [];
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16, padding: 24, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: 24, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#000", margin: 0, fontSize: 20, fontWeight: 700 }}>
             {!mode ? "Plan a Trip" : mode === "quick" ? (step === 2 ? "Your Trip Plan 🗺" : "Quick Plan") : "Build a Trip"}
@@ -1313,7 +1550,13 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                 <input type="number" min="1" value={manualDays} onChange={e => {
                   const n = parseInt(e.target.value) || 1;
                   setManualDays(e.target.value);
-                  setManualSections(Array.from({length: n}, (_, i) => manualSections[i] || { id: "s" + (i+1), name: `Day ${i+1}`, notes: "", items: [] }));
+                  // Auto-fill end date when days + start are set
+                  if (manualStartDate) {
+                    const start = new Date(manualStartDate);
+                    start.setDate(start.getDate() + n - 1);
+                    setManualEndDate(start.toISOString().split("T")[0]);
+                  }
+                  if (!manualGenerated) setManualSections(Array.from({length: n}, (_, i) => manualSections[i] || { id: "s" + (i+1), name: `Day ${i+1}`, items: [] }));
                 }}
                   placeholder="3"
                   style={{ width: 70, background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
@@ -1321,51 +1564,79 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
               </div>
             </div>
 
-            {/* Notes field + AI generate */}
-            {!manualGenerated && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                  Paste Your Notes (optional)
-                </label>
-                <textarea
-                  value={manualNotes}
-                  onChange={e => setManualNotes(e.target.value)}
-                  placeholder="Paste restaurant names, places to visit, friends' suggestions, Google Maps saves... AI will organize them into your days."
-                  rows={5}
+            {/* Start + End date */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Start Date (optional)</label>
+                <input type="date" value={manualStartDate} onChange={e => {
+                  setManualStartDate(e.target.value);
+                  // Auto-fill end date from start + days
+                  if (e.target.value && manualDays) {
+                    const start = new Date(e.target.value);
+                    start.setDate(start.getDate() + (parseInt(manualDays) || 1) - 1);
+                    setManualEndDate(start.toISOString().split("T")[0]);
+                  }
+                }}
                   style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-                    padding: "12px", color: "#000", fontSize: 13, outline: "none",
-                    resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" }} />
-                {manualError && (
-                  <div style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{manualError}</div>
-                )}
-                {manualNotes.trim() && (
-                  <button onClick={generateFromManualNotes} disabled={manualLoading}
-                    style={{ marginTop: 8, width: "100%", background: manualLoading ? "#888" : "#000",
-                      border: "none", borderRadius: 8, padding: "11px", color: "#fff",
-                      fontSize: 14, fontWeight: 600, cursor: manualLoading ? "wait" : "pointer" }}>
-                    {manualLoading ? "AI is organizing…" : "✨ Generate Days from Notes"}
-                  </button>
-                )}
-                {!manualNotes.trim() && (
-                  <button onClick={() => {
-                    const n = parseInt(manualDays) || 3;
-                    setManualSections(Array.from({length: n}, (_, i) => ({ id: "s" + (i+1), name: `Day ${i+1}`, notes: "", items: [] })));
-                    setManualGenerated(true);
-                  }}
-                    style={{ marginTop: 8, width: "100%", background: "#f8f8f8", border: "1px solid #efefef",
-                      borderRadius: 8, padding: "11px", color: "#555", fontSize: 14, cursor: "pointer" }}>
-                    Skip — Build Manually
-                  </button>
-                )}
+                    padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
               </div>
-            )}
+              <div>
+                <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>End Date (optional)</label>
+                <input type="date" value={manualEndDate} onChange={e => {
+                  setManualEndDate(e.target.value);
+                  // Auto-calculate days from start + end
+                  if (manualStartDate && e.target.value) {
+                    const diff = Math.round((new Date(e.target.value) - new Date(manualStartDate)) / 86400000) + 1;
+                    if (diff > 0) {
+                      setManualDays(String(diff));
+                      if (!manualGenerated) setManualSections(Array.from({length: diff}, (_, i) => manualSections[i] || { id: "s" + (i+1), name: `Day ${i+1}`, items: [] }));
+                    }
+                  }
+                }}
+                  style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                    padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+            </div>
+
+            {/* Notes field + AI generate */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                Your Notes {manualGenerated ? "(edit & re-generate anytime)" : "(optional)"}
+              </label>
+              <textarea
+                value={manualNotes}
+                onChange={e => setManualNotes(e.target.value)}
+                placeholder={"Paste restaurant names, neighborhoods, friends' tips, Google Maps saves, or anything — AI will group them geographically into days.\n\nExample:\n- Milk Bar (RiNo) - must go\n- Day 2: Red Rocks amphitheater\n- great brunch spot: Denver Biscuit Co on Colfax"}
+                rows={manualGenerated ? 3 : 5}
+                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                  padding: "12px", color: "#000", fontSize: 13, outline: "none",
+                  resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" }} />
+              {manualError && (
+                <div style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{manualError}</div>
+              )}
+              {manualNotes.trim() && (
+                <button onClick={generateFromManualNotes} disabled={manualLoading}
+                  style={{ marginTop: 8, width: "100%", background: manualLoading ? "#888" : "#000",
+                    border: "none", borderRadius: 8, padding: "11px", color: "#fff",
+                    fontSize: 14, fontWeight: 600, cursor: manualLoading ? "wait" : "pointer" }}>
+                  {manualLoading ? "AI is organizing…" : manualGenerated ? "✨ Re-generate from Notes" : "✨ Generate Days from Notes"}
+                </button>
+              )}
+              {!manualNotes.trim() && !manualGenerated && (
+                <button onClick={() => setManualGenerated(true)}
+                  style={{ marginTop: 8, width: "100%", background: "#f8f8f8", border: "1px solid #efefef",
+                    borderRadius: 8, padding: "11px", color: "#555", fontSize: 14, cursor: "pointer" }}>
+                  Skip — Build Manually
+                </button>
+              )}
+            </div>
 
             {manualGenerated && (
               <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 13, color: "#888" }}>✨ AI organized your notes — edit below</div>
-                <button onClick={() => { setManualGenerated(false); setManualSections([{ id: "s1", name: "Day 1", items: [] }]); }}
-                  style={{ background: "none", border: "none", color: "#888", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
-                  Start over
+                <div style={{ fontSize: 13, color: "#555" }}>✨ AI organized your notes — edit below or re-generate above</div>
+                <button onClick={() => { setManualGenerated(false); setManualNotes(""); setManualSections(Array.from({ length: parseInt(manualDays) || 3 }, (_, i) => ({ id: "s" + (i + 1), name: `Day ${i + 1}`, items: [] }))); }}
+                  style={{ background: "none", border: "none", color: "#aaa", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+                  Clear all
                 </button>
               </div>
             )}
@@ -1379,7 +1650,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {friendsForDest.slice(0, 5).map(e => (
                     <div key={e.id} style={{ background: "#f8f8f8", borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 16 }}>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", hotel:"🏨", activity:"🏔" }[e.type] || "📍"}</span>
+                      <span style={{ fontSize: 16 }}>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 500, color: "#000" }}>{e.name}</div>
                         <div style={{ fontSize: 12, color: "#888" }}>{e.city} · {e.cuisine || e.type}</div>
@@ -1442,7 +1713,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                 <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
                   {manualSearchResults.map(e => (
                     <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
-                      <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", hotel:"🏨", activity:"🏔" }[e.type] || "📍"}</span>
+                      <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
                         <div style={{ fontSize: 12, color: "#888" }}>{e.city}</div>
@@ -1490,13 +1761,43 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                   ) : (
                     section.items.map((e, i) => (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < section.items.length-1 ? "1px solid #efefef" : "none" }}>
-                        <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", hotel:"🏨", activity:"🏔" }[e.type] || "📍"}</span>
-                        <span style={{ flex: 1, fontSize: 13, color: "#000" }}>{e.name}</span>
+                        <select value={e.type || "activity"}
+                          onChange={ev => setManualSections(prev => prev.map(s => s.id !== section.id ? s : {
+                            ...s, items: s.items.map((it, j) => j === i ? {...it, type: ev.target.value} : it)
+                          }))}
+                          style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", padding: 0, color: "#555" }}>
+                          <option value="restaurant">🍽</option>
+                          <option value="brewery">🍺</option>
+                          <option value="cafe">☕</option>
+                          <option value="activity">🏔</option>
+                          <option value="hiking">🥾</option>
+                        </select>
+                        <input value={e.name}
+                          onChange={ev => setManualSections(prev => prev.map(s => s.id !== section.id ? s : {
+                            ...s, items: s.items.map((it, j) => j === i ? {...it, name: ev.target.value} : it)
+                          }))}
+                          style={{ flex: 1, fontSize: 13, color: "#000", background: "transparent", border: "none",
+                            borderBottom: "1px dashed #e0e0e0", outline: "none", padding: "2px 0" }} />
                         <button onClick={() => removeFromSection(section.id, e.id)}
                           style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 14 }}>×</button>
                       </div>
                     ))
                   )}
+                  {/* Quick add custom place */}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <input placeholder="+ Add a place..."
+                      style={{ flex: 1, background: "#fff", border: "1px solid #e8e8e8", borderRadius: 6,
+                        padding: "6px 10px", fontSize: 12, color: "#000", outline: "none" }}
+                      onKeyDown={ev => {
+                        if (ev.key === "Enter" && ev.target.value.trim()) {
+                          const name = ev.target.value.trim();
+                          setManualSections(prev => prev.map(s => s.id !== section.id ? s : {
+                            ...s, items: [...s.items, { id: "c_" + Date.now(), name, type: "activity", city: manualDestination, state: "", verdict: "must_go", cuisine: "" }]
+                          }));
+                          ev.target.value = "";
+                        }
+                      }} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -1508,40 +1809,41 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
             )}
             <button onClick={() => {
               if (!manualDestination.trim()) return;
-              const tripData = {
-                id: "t" + Date.now(),
-                destination: manualDestination,
-                days: manualSections.length,
-                kids: false,
-                createdAt: new Date().toLocaleDateString(),
-                invitedFriends: [],
-                completed: false,
-                plan: {
-                  days: manualSections.map((s, i) => ({
-                    day: i + 1,
-                    city: manualDestination,
-                    activity: s.name,
-                    sectionNotes: s.notes || "",
-                    entries: (s.items || []).map((item, j) => ({
-                      id: item.id || ("m_" + i + "_" + j),
-                      name: item.name,
-                      type: item.type || "activity",
-                      city: item.city || manualDestination,
-                      state: item.state || "",
-                      verdict: item.verdict || "must_go",
-                      cuisine: item.cuisine || "",
-                      notes: item.note || item.notes || ""
-                    }))
+              const plan = {
+                days: manualSections.map((s, i) => ({
+                  day: i + 1,
+                  city: manualDestination,
+                  activity: s.name,
+                  name: s.name,
+                  sectionNotes: s.notes || "",
+                  entries: (s.items || []).map((item, j) => ({
+                    id: item.id || ("m_" + i + "_" + j),
+                    name: item.name,
+                    type: item.type || "activity",
+                    city: item.city || manualDestination,
+                    state: item.state || "",
+                    verdict: item.verdict || "must_go",
+                    cuisine: item.cuisine || "",
+                    notes: item.note || item.notes || ""
                   }))
-                }
+                }))
               };
-              onSaveTrip(tripData);
+              if (isEditing) {
+                onUpdateTrip({ ...editTrip, destination: manualDestination, days: manualSections.length,
+                  startDate: manualStartDate || null, endDate: manualEndDate || null,
+                  notes: manualNotes || "", plan });
+              } else {
+                onSaveTrip({ id: "t" + Date.now(), destination: manualDestination, days: manualSections.length,
+                  kids: false, startDate: manualStartDate || null, endDate: manualEndDate || null,
+                  createdAt: new Date().toLocaleDateString(), invitedFriends: [], sharedWith: [],
+                  completed: false, notes: manualNotes || "", plan });
+              }
               onClose();
             }}
               style={{ width: "100%", background: manualDestination.trim() ? "#000" : "#ccc",
                 border: "none", borderRadius: 8, padding: 13,
                 color: "#fff", fontSize: 15, fontWeight: 700, cursor: manualDestination.trim() ? "pointer" : "not-allowed" }}>
-              Save Trip ✓
+              {isEditing ? "Save Changes ✓" : "Save Trip ✓"}
             </button>
           </div>
         )}
@@ -1563,7 +1865,17 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
               <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>Number of Days</label>
               <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                 {[1,2,3,4,5,7].map(d => (
-                  <button key={d} onClick={() => setPrefs(p => ({...p, days: d}))}
+                  <button key={d} onClick={() => {
+                    setPrefs(p => {
+                      const updated = { ...p, days: d };
+                      if (p.startDate) {
+                        const start = new Date(p.startDate);
+                        start.setDate(start.getDate() + d - 1);
+                        updated.endDate = start.toISOString().split("T")[0];
+                      }
+                      return updated;
+                    });
+                  }}
                     style={{ background: prefs.days === d ? "#000" : "#f8f8f8",
                       border: `1px solid ${prefs.days === d ? "#000" : "#efefef"}`,
                       color: prefs.days === d ? "#fff" : "#555",
@@ -1571,6 +1883,42 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                     {d}
                   </button>
                 ))}
+              </div>
+            </div>
+            {/* Start + End date */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#666", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Start Date (optional)</label>
+                <input type="date" value={prefs.startDate} onChange={e => {
+                  const val = e.target.value;
+                  setPrefs(p => {
+                    const updated = { ...p, startDate: val };
+                    if (val && p.days) {
+                      const start = new Date(val);
+                      start.setDate(start.getDate() + p.days - 1);
+                      updated.endDate = start.toISOString().split("T")[0];
+                    }
+                    return updated;
+                  });
+                }}
+                  style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                    padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#666", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>End Date (optional)</label>
+                <input type="date" value={prefs.endDate} onChange={e => {
+                  const val = e.target.value;
+                  setPrefs(p => {
+                    const updated = { ...p, endDate: val };
+                    if (p.startDate && val) {
+                      const diff = Math.round((new Date(val) - new Date(p.startDate)) / 86400000) + 1;
+                      if (diff > 0) updated.days = diff;
+                    }
+                    return updated;
+                  });
+                }}
+                  style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                    padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -1651,8 +1999,11 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
                   destination: prefs.destination,
                   days: prefs.days,
                   kids: prefs.kids,
+                  startDate: prefs.startDate || null,
+                  endDate: prefs.endDate || null,
                   createdAt: new Date().toLocaleDateString(),
                   invitedFriends: [],
+                  sharedWith: [],
                   completed: false,
                   plan
                 });
@@ -1705,86 +2056,164 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
 // ─── PROFILE VIEW ────────────────────────────────────────────────────────────
 function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
   const userEntries = entries.filter(e => e.userId === user.id);
-  const cities = [...new Set(userEntries.map(e => e.city))];
-  const [selectedCity, setSelectedCity] = useState(null);
-  const filteredEntries = selectedCity ? userEntries.filter(e => e.city === selectedCity) : userEntries;
-  const mustGo = filteredEntries.filter(e => e.verdict === "must_go");
+  const mustGo = userEntries.filter(e => e.verdict === "must_go");
+  const cities = [...new Set(userEntries.map(e => e.city).filter(Boolean))];
+  const [cityFilter, setCityFilter] = useState(null);
+  const [profileSearch, setProfileSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  const typeChips = [
+    { id: "all", label: "All" },
+    { id: "food", label: "🍽 Food" },
+    { id: "coffee", label: "☕ Coffee" },
+    { id: "brewery", label: "🍺 Brewery" },
+    { id: "activities", label: "🏔 Activities" },
+  ];
+  const typeMatch = (e) => {
+    if (typeFilter === "all") return true;
+    if (typeFilter === "food") return ["restaurant"].includes(e.type);
+    if (typeFilter === "coffee") return e.type === "cafe";
+    if (typeFilter === "brewery") return e.type === "brewery";
+    if (typeFilter === "activities") return ["activity","hiking","outdoor","scenic","kids"].includes(e.type);
+    return true;
+  };
+
+  const visibleMustGo = mustGo.filter(e => {
+    if (cityFilter && e.city !== cityFilter) return false;
+    if (!typeMatch(e)) return false;
+    if (profileSearch.trim()) {
+      const q = profileSearch.toLowerCase();
+      return (e.name||"").toLowerCase().includes(q) || (e.city||"").toLowerCase().includes(q)
+        || (e.cuisine||"").toLowerCase().includes(q) || (e.notes||"").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const chipBtn = (val, label) => (
+    <button key={val} onClick={() => setTypeFilter(val)}
+      style={{ background: typeFilter === val ? "#000" : "#f8f8f8",
+        border: `1px solid ${typeFilter === val ? "#000" : "#e8e8e8"}`,
+        color: typeFilter === val ? "#fff" : "#555",
+        borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer",
+        whiteSpace: "nowrap", flexShrink: 0, fontWeight: typeFilter === val ? 600 : 400 }}>
+      {label}
+    </button>
+  );
 
   return (
     <div>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, marginBottom: 20, padding: 0 }}>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: "#555", cursor: "pointer",
+        fontSize: 13, marginBottom: 20, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
         ← Back
       </button>
-      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+
+      {/* Hero card */}
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16,
+        padding: 24, marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-          <div style={{ width: 56, height: 56, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>
-            {user.avatar}
+          <div style={{ width: 60, height: 60, background: "#f0f0f0", border: "2px solid #efefef",
+            borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 28, flexShrink: 0, overflow: "hidden" }}>
+            {user.avatarImg
+              ? <img src={user.avatarImg} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : user.avatar}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#000" }}>{user.name}</div>
-            <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>@{user.username}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#000", letterSpacing: "-0.02em" }}>{user.name}</div>
+            <div style={{ color: "#aaa", fontSize: 12, marginBottom: 10 }}>@{user.username}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {user.tags.map(t => <TravelerTag key={t} tag={t} />)}
             </div>
           </div>
         </div>
-<div style={{ color: "#888", fontSize: 13, marginTop: 14, lineHeight: 1.5 }}>{user.bio}</div>
-        <div style={{ display: "flex", gap: 20, marginTop: 16 }}>
+        {user.bio && (
+          <div style={{ color: "#666", fontSize: 13, marginTop: 14, lineHeight: 1.6, borderTop: "1px solid #f5f5f5", paddingTop: 14 }}>
+            {user.bio}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
           {[["Trips", user.tripsCount],["Countries", user.countriesCount],["Cities", user.citiesCount]].map(([l,v]) => (
             <div key={l}>
-              <div style={{ color: "#000", fontSize: 18, fontWeight: 700 }}>{v}</div>
-              <div style={{ color: "#888", fontSize: 11 }}>{l}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#000" }}>{v}</div>
+              <div style={{ fontSize: 11, color: "#aaa", marginTop: 1 }}>{l}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ color: "#888", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-        Cities Visited
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-        {selectedCity && (
-          <button onClick={() => setSelectedCity(null)}
-            style={{ background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 6,
-              padding: "5px 12px", fontSize: 12, color: "#555", cursor: "pointer" }}>
-            × Clear filter
-          </button>
-        )}
-        {cities.map(c => (
-          <button key={c} onClick={() => setSelectedCity(selectedCity === c ? null : c)}
-            style={{ background: selectedCity === c ? "#000" : "#f8f8f8",
-              border: `1px solid ${selectedCity === c ? "#000" : "#efefef"}`,
-              color: selectedCity === c ? "#fff" : "#555",
-              borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}>
-            📍 {c}
-          </button>
-        ))}
+      {/* Search */}
+      <div style={{ position: "relative", marginBottom: 10 }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }}>🔍</span>
+        <input value={profileSearch} onChange={e => setProfileSearch(e.target.value)}
+          placeholder="Search places, city, cuisine..."
+          style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+            padding: "11px 12px 11px 34px", color: "#000", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+        {profileSearch && <button onClick={() => setProfileSearch("")}
+          style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#aaa", cursor: "pointer", fontSize: 16 }}>×</button>}
       </div>
 
-      <div style={{ color: "#888", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-        {selectedCity ? `Must-Go in ${selectedCity} (${mustGo.length})` : `Must-Go Picks (${mustGo.length})`}
+      {/* Type filter chips */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16 }}>
+        {typeChips.map(c => chipBtn(c.id, c.label))}
       </div>
 
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {mustGo.map(e => (
-          <div key={e.id} style={{ position: "relative" }}>
-            <EntryCard entry={e} />
-            {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
-              <div style={{ position: "absolute", bottom: 12, right: 12 }}>
-                <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
-                  style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
-                  defaultValue="">
-                  <option value="" disabled>+ Trip</option>
-                  {savedTrips.filter(t => !t.completed).map(t => (
-                    <option key={t.id} value={t.id}>{t.destination}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+      {/* City pills */}
+      {cities.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+            Filter by City
           </div>
-        ))}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {cityFilter && (
+              <button onClick={() => setCityFilter(null)}
+                style={{ background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 20, padding: "4px 12px",
+                  fontSize: 11, color: "#555", cursor: "pointer" }}>
+                ✕ Clear
+              </button>
+            )}
+            {cities.map(c => (
+              <button key={c} onClick={() => setCityFilter(cityFilter === c ? null : c)}
+                style={{ background: cityFilter === c ? "#000" : "#f8f8f8",
+                  border: `1px solid ${cityFilter === c ? "#000" : "#e8e8e8"}`,
+                  color: cityFilter === c ? "#fff" : "#444",
+                  borderRadius: 20, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>
+                📍 {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
+        Must-Go Picks · {visibleMustGo.length} {cityFilter ? `in ${cityFilter}` : ""}
       </div>
+
+      {visibleMustGo.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
+          <div style={{ fontSize: 14, color: "#888" }}>No picks match your filters</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {visibleMustGo.map(e => (
+            <div key={e.id} style={{ position: "relative" }}>
+              <EntryCard entry={e} />
+              {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
+                <div style={{ position: "absolute", bottom: 12, right: 12 }}>
+                  <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
+                    style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                    defaultValue="">
+                    <option value="" disabled>+ Trip</option>
+                    {savedTrips.filter(t => !t.completed).map(t => (
+                      <option key={t.id} value={t.id}>{t.destination}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1810,11 +2239,11 @@ const ACTION_COLOR = { log: "#e8c84a", verdict: "#4ade80", trip: "#60a5fa", dish
 
 function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, setFriendState, onViewProfile, savedTrips, onAddToTrip }) {
   const [filter, setFilter] = useState("all");
-  const allUsers = [...MOCK_USERS, ...MOCK_DISCOVER];
+  const allUsers = ALL_USERS;
   const friends = allUsers.filter(u => friendState[u.id] === "friend");
 
   const [locationSearch, setLocationSearch] = useState("");
-  const allEntries = [...MOCK_ENTRIES, ...entries];
+  const allEntries = useMemo(() => [...MOCK_ENTRIES, ...entries], [entries]);
 
   const filtered = EXTENDED_ACTIVITY.filter(a => {
     if (filter !== "all" && a.type !== filter) return false;
@@ -1877,11 +2306,11 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
           value={locationSearch}
           onChange={e => setLocationSearch(e.target.value)}
           placeholder="Search by city or state..."
-          style={{ width: "100%", background: "#111", border: "1px solid #2a2a2a", borderRadius: 10,
-            padding: "10px 12px 10px 34px", color: "#f5f0e8", fontSize: 13,
+          style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+            padding: "10px 12px 10px 34px", color: "#000", fontSize: 13,
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", outline: "none", boxSizing: "border-box" }}
-          onFocus={e => e.target.style.borderColor = "#e8c84a"}
-          onBlur={e => e.target.style.borderColor = "#2a2a2a"}
+          onFocus={e => e.target.style.borderColor = "#000"}
+          onBlur={e => e.target.style.borderColor = "#efefef"}
         />
         {locationSearch && (
           <button onClick={() => setLocationSearch("")}
@@ -1894,9 +2323,9 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
       <div style={{ display: "flex", gap: 6, marginBottom: 18, overflowX: "auto", paddingBottom: 2 }}>
         {[["all","All"],["log","New Logs"],["verdict","Must Go"],["dish","Dish Tips"],["trip","Trips"]].map(([v,l]) => (
           <button key={v} onClick={() => setFilter(v)}
-            style={{ background: filter === v ? "#e8c84a22" : "transparent",
-              border: `1px solid ${filter === v ? "#e8c84a" : "#2a2a2a"}`,
-              color: filter === v ? "#e8c84a" : "#555",
+            style={{ background: filter === v ? "#000" : "transparent",
+              border: `1px solid ${filter === v ? "#000" : "#ddd"}`,
+              color: filter === v ? "#fff" : "#555",
               borderRadius: 20, padding: "5px 14px", cursor: "pointer",
               fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", whiteSpace: "nowrap",
               flexShrink: 0 }}>
@@ -1953,7 +2382,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
                   <div style={{ flex: 1, paddingBottom: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <span style={{ color: "#f5f0e8", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                        <span style={{ color: "#f5f0e8", fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}
                           onClick={() => onViewProfile(user.id)}>
                           @{user.username}
                         </span>
@@ -1985,18 +2414,23 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
                           {entry.city}, {entry.state} · {entry.cuisine || entry.type}
                         </div>
                         {entry.dish && (
-                          <div style={{ color: "#e8c84a", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginTop: 6 }}>
+                          <div style={{ color: "#555", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginTop: 6 }}>
                             ✦ {entry.dish}
                           </div>
                         )}
                         {entry.notes && (
                           <div style={{ color: "#666", fontSize: 12, marginTop: 6, fontStyle: "italic", lineHeight: 1.5 }}>
-                            "{entry.notes.slice(0, 80)}{entry.notes.length > 80 ? "…" : ""}"
+                            "{(entry.notes || "").slice(0, 80)}{(entry.notes || "").length > 80 ? "…" : ""}"
                           </div>
                         )}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-
+                            {(entry.tags || []).slice(0, 3).map(t => (
+                              <span key={t} style={{ color: "#888", fontSize: 10,
+                                background: "#f5f5f5", borderRadius: 20, padding: "2px 8px" }}>
+                                #{t}
+                              </span>
+                            ))}
                           </div>
                           {savedTrips && savedTrips.length > 0 && (
                             <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, entry); ev.target.value = ""; }}}
@@ -2034,7 +2468,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
 
 // ─── NETWORK TAB ─────────────────────────────────────────────────────────────
 function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming }) {
-  const [search] = useState("");
+  const [search, setSearch] = useState("");
   const [networkSection, setNetworkSection] = useState("friends"); // friends | activity | discover
   const allUsers = [...MOCK_USERS.slice(1), ...MOCK_DISCOVER];
   const friends = allUsers.filter(u => friendState[u.id] === "friend");
@@ -2054,13 +2488,13 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
     );
     if (state === "pending") return (
       <button onClick={e => { e.stopPropagation(); setFriendState(s => { const n = {...s}; delete n[user.id]; return n; }); }}
-        style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#e8c84a11", border: "1px solid #e8c84a44", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+        style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
         Pending ✕
       </button>
     );
     return (
       <button onClick={e => { e.stopPropagation(); setFriendState(s => ({...s, [user.id]: "pending"})); }}
-        style={{ color: "#f5f0e8", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#1a1a1a", border: "1px solid #333", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+        style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
         + Add
       </button>
     );
@@ -2071,17 +2505,17 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
     const mustGo = userEntries.filter(e => e.verdict === "must_go").length;
     return (
       <div onClick={onClick}
-        style={{ background: "#111", border: "1px solid #222", borderRadius: 12, padding: "16px 18px", cursor: "pointer", transition: "border-color 0.2s" }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = "#e8c84a44"}
-        onMouseLeave={e => e.currentTarget.style.borderColor = "#222"}>
+        style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, padding: "16px 18px", cursor: "pointer", transition: "border-color 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = "#000"}
+        onMouseLeave={e => e.currentTarget.style.borderColor = "#efefef"}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ width: 42, height: 42, background: "#1a1a1a", border: "2px solid #333", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+          <div style={{ width: 42, height: 42, background: "#f0f0f0", border: "1px solid #efefef", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
             {user.avatar}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div>
-                <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#f5f0e8", fontSize: 16 }}>{user.name}</div>
+                <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000", fontSize: 16 }}>{user.name}</div>
                 <div style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>@{user.username}</div>
               </div>
               <div onClick={e => e.stopPropagation()}>
@@ -2111,12 +2545,12 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name or @username…"
-          style={{ width: "100%", background: "#111", border: "1px solid #2a2a2a", borderRadius: 10,
-            padding: "12px 14px 12px 38px", color: "#f5f0e8", fontSize: 14,
+          style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+            padding: "12px 14px 12px 38px", color: "#000", fontSize: 14,
             fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", outline: "none", boxSizing: "border-box",
             transition: "border-color 0.2s" }}
-          onFocus={e => e.target.style.borderColor = "#e8c84a"}
-          onBlur={e => e.target.style.borderColor = "#2a2a2a"}
+          onFocus={e => e.target.style.borderColor = "#000"}
+          onBlur={e => e.target.style.borderColor = "#efefef"}
         />
         {search && (
           <button onClick={() => setSearch("")}
@@ -2151,9 +2585,9 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
           <div style={{ display: "flex", gap: 0, marginBottom: 18, background: "#111", borderRadius: 8, padding: 3 }}>
             {[["friends", `Friends (${friends.length})`], ["discover", "Discover"]].map(([id, label]) => (
               <button key={id} onClick={() => setNetworkSection(id)}
-                style={{ flex: 1, background: networkSection === id ? "#e8c84a" : "transparent",
+                style={{ flex: 1, background: networkSection === id ? "#000" : "transparent",
                   border: "none", borderRadius: 6, padding: "8px 4px", cursor: "pointer",
-                  color: networkSection === id ? "#0a0a0a" : "#555",
+                  color: networkSection === id ? "#fff" : "#555",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: networkSection === id ? 700 : 400,
                   transition: "all 0.2s" }}>
                 {label}
@@ -2167,20 +2601,20 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
               {/* Pending incoming requests */}
               {pendingIncoming.length > 0 && (
                 <div style={{ marginBottom: 18 }}>
-                  <div style={{ color: "#e8c84a", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", marginBottom: 10 }}>
+                  <div style={{ color: "#000", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", marginBottom: 10 }}>
                     ● {pendingIncoming.length} FRIEND REQUEST{pendingIncoming.length > 1 ? "S" : ""}
                   </div>
                   {pendingIncoming.map(req => {
-                    const user = [...MOCK_USERS, ...MOCK_DISCOVER].find(u => u.id === req.from);
+                    const user = ALL_USERS.find(u => u.id === req.from);
                     if (!user) return null;
                     return (
-                      <div key={req.from} style={{ background: "#0f1a0f", border: "1px solid #1a3a1a", borderRadius: 12, padding: "14px 16px", marginBottom: 8 }}>
+                      <div key={req.from} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 16px", marginBottom: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 38, height: 38, background: "#1a1a1a", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                          <div style={{ width: 38, height: 38, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
                             {user.avatar}
                           </div>
                           <div style={{ flex: 1 }}>
-                            <div style={{ color: "#f5f0e8", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15 }}>{user.name}</div>
+                            <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15 }}>{user.name}</div>
                             <div style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>@{user.username}</div>
                           </div>
                           <div style={{ display: "flex", gap: 7 }}>
@@ -2209,13 +2643,13 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
                   <div style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", marginBottom: 10 }}>SENT REQUESTS</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {pendingOutgoing.map(u => (
-                      <div key={u.id} style={{ background: "#111", border: "1px solid #222", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div key={u.id} style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ fontSize: 18 }}>{u.avatar}</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ color: "#f5f0e8", fontSize: 14, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>{u.name}</div>
                           <div style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>@{u.username}</div>
                         </div>
-                        <span style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#e8c84a11", border: "1px solid #e8c84a33", borderRadius: 6, padding: "3px 9px" }}>Pending</span>
+                        <span style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 6, padding: "3px 9px" }}>Pending</span>
                       </div>
                     ))}
                   </div>
@@ -2295,10 +2729,10 @@ function AddDiaryModal({ onClose, onSave, entries }) {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#0d0d0d", border: "1px solid #2a2a2a", borderRadius: 16, padding: "28px 28px 24px", width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h2 style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 22 }}>📖 New Diary Entry</h2>
+          <h2 style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 22 }}>📖 New Diary Entry</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
 
@@ -2320,8 +2754,8 @@ function AddDiaryModal({ onClose, onSave, entries }) {
           <textarea value={form.story} onChange={e => setForm(f => ({ ...f, story: e.target.value }))}
             placeholder="Write about your trip — what you did, what surprised you, what you'd tell a friend…"
             rows={5}
-            style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-              padding: "10px 12px", color: "#f5f0e8", fontSize: 13, marginTop: 4,
+            style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+              padding: "10px 12px", color: "#000", fontSize: 13, marginTop: 4,
               boxSizing: "border-box", outline: "none", resize: "vertical",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", lineHeight: 1.6 }} />
         </div>
@@ -2333,7 +2767,7 @@ function AddDiaryModal({ onClose, onSave, entries }) {
           <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Link Places from My Logs</label>
           <button onClick={() => setShowLinkPicker(!showLinkPicker)}
             style={{ background: "#111", border: "1px solid #333", borderRadius: 8, padding: "8px 14px",
-              color: "#e8c84a", fontSize: 12, cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", width: "100%" }}>
+              color: "#000", fontSize: 12, cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", width: "100%" }}>
             {showLinkPicker ? "▴ Hide" : `▾ Select places (${form.linkedEntries.length} linked)`}
           </button>
           {showLinkPicker && (
@@ -2371,13 +2805,13 @@ function AddDiaryModal({ onClose, onSave, entries }) {
             id: "d" + Date.now(),
             userId: "u1",
             photos: [],
-            tags: form.tags.split(",").map(t => t.trim()).filter(Boolean)
+            tags: parseTags(form.tags)
           };
           onSave(newDiary);
           onClose();
         }}
-          style={{ width: "100%", background: "linear-gradient(135deg, #e8c84a, #d4a843)",
-            border: "none", borderRadius: 8, padding: "13px", color: "#0a0a0a",
+          style={{ width: "100%", background: "#000",
+            border: "none", borderRadius: 8, padding: "13px", color: "#fff",
             fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
           Save Diary Entry
         </button>
@@ -2419,10 +2853,10 @@ function EditEntryModal({ entry, onClose, onSave }) {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 16, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h2 style={{ color: "#e8c84a", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 20, fontWeight: 700 }}>Edit Log</h2>
+          <h2 style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 20, fontWeight: 700 }}>Edit Log</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
 
@@ -2431,17 +2865,17 @@ function EditEntryModal({ entry, onClose, onSave }) {
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>City</label>
             <input value={form.city} onChange={e => setForm(f => ({...f, city: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8, padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>State</label>
             <input value={form.state} onChange={e => setForm(f => ({...f, state: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8, padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Country</label>
             <input value={form.country} onChange={e => setForm(f => ({...f, country: e.target.value}))}
-              style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8, padding: "10px 12px", color: "#f5f0e8", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
         </div>
 
@@ -2450,9 +2884,9 @@ function EditEntryModal({ entry, onClose, onSave }) {
           <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
             {["restaurant","brewery","cafe","activity"].map(t => (
               <button key={t} onClick={() => setForm(f => ({...f, type: t}))}
-                style={{ background: form.type === t ? "#e8c84a22" : "#111",
-                  border: `1px solid ${form.type === t ? "#e8c84a" : "#333"}`,
-                  color: form.type === t ? "#e8c84a" : "#666",
+                style={{ background: form.type === t ? "#000" : "#f8f8f8",
+                  border: `1px solid ${form.type === t ? "#000" : "#efefef"}`,
+                  color: form.type === t ? "#fff" : "#555",
                   borderRadius: 6, padding: "6px 12px", cursor: "pointer",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "capitalize" }}>
                 {{"restaurant":"🍽","brewery":"🍺","cafe":"☕","activity":"🏔"}[t]} {t}
@@ -2474,9 +2908,9 @@ function EditEntryModal({ entry, onClose, onSave }) {
           <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
             {[["must_go","MUST GO","#4ade80"],["skip","SKIP IT","#f87171"]].map(([v,l,c]) => (
               <button key={v} onClick={() => setForm(f => ({...f, verdict: v}))}
-                style={{ flex: 1, background: form.verdict === v ? c + "22" : "#111",
-                  border: `1px solid ${form.verdict === v ? c : "#333"}`,
-                  color: form.verdict === v ? c : "#666",
+                style={{ flex: 1, background: form.verdict === v ? c + "22" : "#f8f8f8",
+                  border: `1px solid ${form.verdict === v ? c : "#efefef"}`,
+                  color: form.verdict === v ? c : "#555",
                   borderRadius: 6, padding: "8px", cursor: "pointer",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: 700 }}>
                 {l}
@@ -2490,8 +2924,8 @@ function EditEntryModal({ entry, onClose, onSave }) {
           <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
             placeholder="What made it special?"
             rows={3}
-            style={{ width: "100%", background: "#111", border: "1px solid #333", borderRadius: 8,
-              padding: "10px 12px", color: "#f5f0e8", fontSize: 13, marginTop: 4,
+            style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+              padding: "10px 12px", color: "#000", fontSize: 13, marginTop: 4,
               boxSizing: "border-box", outline: "none", resize: "vertical",
               fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", lineHeight: 1.5 }} />
         </div>
@@ -2521,18 +2955,22 @@ function EditEntryModal({ entry, onClose, onSave }) {
             📷 Add Photos
             <input type="file" accept="image/*" multiple style={{ display: "none" }}
               onChange={e => {
-                const files = Array.from(e.target.files);
+                const valid = Array.from(e.target.files).filter(
+                  f => ALLOWED_IMAGE_TYPES.includes(f.type) && f.size <= MAX_PHOTO_SIZE
+                );
                 const results = [];
                 let loaded = 0;
-                files.forEach((file, idx) => {
+                if (!valid.length) return;
+                valid.forEach((file, idx) => {
                   const reader = new FileReader();
                   reader.onload = ev => {
                     results[idx] = ev.target.result;
                     loaded++;
-                    if (loaded === files.length) {
+                    if (loaded === valid.length) {
                       setPhotos(p => [...p, ...results]);
                     }
                   };
+                  reader.onerror = () => { loaded++; };
                   reader.readAsDataURL(file);
                 });
               }} />
@@ -2550,7 +2988,7 @@ function EditEntryModal({ entry, onClose, onSave }) {
               ...entry,
               ...form,
               photos,
-              tags: form.tags.split(",").map(t => t.trim()).filter(Boolean)
+              tags: parseTags(form.tags)
             });
             onClose();
           }}
@@ -2567,132 +3005,775 @@ function EditEntryModal({ entry, onClose, onSave }) {
 
 
 
+// ─── TRIP MAP MODAL ──────────────────────────────────────────────────────────
+// Geocoding cache — persists across modal opens within the session
+const _geocodeCache = {};
+
+// Raw Nominatim fetch (cached by query string)
+async function _fetchNominatim(query) {
+  if (_geocodeCache[query] !== undefined) return _geocodeCache[query];
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const data = await res.json();
+    const result = data[0] ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null;
+    _geocodeCache[query] = result;
+    return result;
+  } catch {
+    _geocodeCache[query] = null;
+    return null;
+  }
+}
+
+// Small random jitter so stacked city-level pins spread out slightly
+function _jitter(coord) {
+  const spread = 0.012; // ~1 km
+  return {
+    lat: coord.lat + (Math.random() - 0.5) * spread,
+    lng: coord.lng + (Math.random() - 0.5) * spread,
+    approximate: true,
+  };
+}
+
+// Geocode an entry: try specific name first, fall back to city+state
+async function geocodeEntry(entry) {
+  const { name, city, state, country } = entry;
+  // 1. Try full place name
+  const fullQuery = [name, city, state, country].filter(Boolean).join(", ");
+  const exact = await _fetchNominatim(fullQuery);
+  if (exact) return { ...exact, approximate: false };
+
+  // 2. Fall back to city + state (or city + country)
+  const cityQuery = [city, state, country].filter(Boolean).join(", ");
+  if (!cityQuery) return null;
+  const cityCoord = await _fetchNominatim(cityQuery);
+  if (cityCoord) return _jitter(cityCoord);
+
+  return null;
+}
+
+// Day palette — 8 distinct colors
+const DAY_COLORS = ["#e74c3c","#3498db","#27ae60","#f39c12","#8e44ad","#16a085","#e67e22","#2c3e50"];
+
+// approximate=true → dashed-border pin (city-level fallback)
+function makePinIcon(color, size = 28, opacity = 1, approximate = false) {
+  const inner = approximate
+    ? `<circle cx="14" cy="12" r="5" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.8"/>`
+    : `<circle cx="14" cy="12" r="5" fill="#fff" opacity="0.85"/>`;
+  const pathFill = approximate ? "none" : color;
+  const pathStroke = approximate ? color : "#fff";
+  const pathStrokeWidth = approximate ? "2" : "1.5";
+  const pathOpacity = approximate ? "0.7" : opacity;
+  const html = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size * 1.35}" viewBox="0 0 28 38">
+    <ellipse cx="14" cy="35" rx="5" ry="2.5" fill="rgba(0,0,0,0.18)"/>
+    <path d="M14 2C8.48 2 4 6.48 4 12c0 7.5 10 24 10 24s10-16.5 10-24C24 6.48 19.52 2 14 2z"
+      fill="${pathFill}" stroke="${pathStroke}" stroke-width="${pathStrokeWidth}" opacity="${pathOpacity}"/>
+    ${inner}
+  </svg>`;
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [size, size * 1.35],
+    iconAnchor: [size / 2, size * 1.35],
+    popupAnchor: [0, -(size * 1.35)],
+  });
+}
+
+// Sub-component: flies map to bounds when filtered entries change
+function MapBoundsUpdater({ positions }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!positions.length) return;
+    if (positions.length === 1) {
+      map.setView(positions[0], 13, { animate: true });
+    } else {
+      map.fitBounds(positions.map(p => [p.lat, p.lng]), { padding: [40, 40], animate: true });
+    }
+  }, [positions, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function TripMapModal({ trip, onClose }) {
+  const [dayFilter, setDayFilter] = useState("all");
+  // coordsMap: entryId -> { lat, lng } | null
+  const [coordsMap, setCoordsMap] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
+  const listRef = useRef(null);
+  const markerRefs = useRef({});
+
+  // Flatten all entries with day metadata
+  const allEntries = useMemo(() => {
+    if (!trip?.plan?.days) return [];
+    return trip.plan.days.flatMap((day, di) =>
+      (day.entries || day.items || []).map(e => ({
+        ...e,
+        _dayIdx: di,
+        _dayLabel: day.name || `Day ${day.day || di + 1}`,
+        _dayColor: DAY_COLORS[di % DAY_COLORS.length],
+      }))
+    );
+  }, [trip]);
+
+  // Geocode all entries on mount (sequential to respect Nominatim rate limit)
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      setLoading(true);
+      const result = {};
+      for (const e of allEntries) {
+        if (cancelled) break;
+        result[e.id] = await geocodeEntry(e);
+        // Update map incrementally as each place resolves
+        if (!cancelled) setCoordsMap(prev => ({ ...prev, [e.id]: result[e.id] }));
+        // Nominatim fair-use: max 1 req/sec. We may do 2 fetches per entry (exact + city fallback)
+        // so 600ms gap keeps us comfortably under the limit.
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (!cancelled) setLoading(false);
+    }
+    run();
+    return () => { cancelled = true; };
+  }, [allEntries]);
+
+  const filteredEntries = useMemo(() =>
+    dayFilter === "all" ? allEntries : allEntries.filter(e => e._dayIdx === dayFilter),
+    [allEntries, dayFilter]
+  );
+
+  const mappedEntries = useMemo(() =>
+    filteredEntries.filter(e => coordsMap[e.id]),
+    [filteredEntries, coordsMap]
+  );
+
+  const uniqueDays = useMemo(() => {
+    const seen = new Set();
+    return allEntries.reduce((acc, e) => {
+      if (!seen.has(e._dayIdx)) { seen.add(e._dayIdx); acc.push({ idx: e._dayIdx, label: e._dayLabel, color: e._dayColor }); }
+      return acc;
+    }, []);
+  }, [allEntries]);
+
+  // Scroll the list to an entry when its pin is clicked
+  const scrollToEntry = useCallback((id) => {
+    setSelectedId(id);
+    const el = listRef.current?.querySelector(`[data-entry-id="${id}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  // Fly to a marker when user clicks an entry row
+  const flyToEntry = useCallback((entry) => {
+    setSelectedId(entry.id);
+    const coord = coordsMap[entry.id];
+    if (!coord) return;
+    const marker = markerRefs.current[entry.id];
+    if (marker) {
+      marker.openPopup();
+    }
+  }, [coordsMap]);
+
+  const centerPos = mappedEntries.length
+    ? [mappedEntries.reduce((s, e) => s + coordsMap[e.id].lat, 0) / mappedEntries.length,
+       mappedEntries.reduce((s, e) => s + coordsMap[e.id].lng, 0) / mappedEntries.length]
+    : [39.5, -98.35]; // continental US fallback
+
+  const verdictOpacity = v => v === "skip" ? 0.45 : 1;
+
+  return createPortal(
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1200,
+      display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: "min(96vw, 1100px)", height: "min(90vh, 720px)", background: "#fff",
+          borderRadius: 18, overflow: "hidden", display: "flex", flexDirection: "column",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.28)" }}>
+
+        {/* ── Header ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px",
+          borderBottom: "1px solid #f0f0f0", flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#000" }}>🗺 {trip.destination} — Map View</div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+              {loading
+                ? `Locating ${allEntries.length} places…`
+                : `${mappedEntries.length} of ${allEntries.length} places mapped`}
+            </div>
+          </div>
+          {/* Day filter pills */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setDayFilter("all")}
+              style={{ borderRadius: 20, padding: "4px 12px", fontSize: 12, cursor: "pointer",
+                border: "none", fontWeight: 600,
+                background: dayFilter === "all" ? "#000" : "#f0f0f0",
+                color: dayFilter === "all" ? "#fff" : "#555" }}>
+              All Days
+            </button>
+            {uniqueDays.map(d => (
+              <button key={d.idx} onClick={() => setDayFilter(d.idx)}
+                style={{ borderRadius: 20, padding: "4px 12px", fontSize: 12, cursor: "pointer",
+                  border: "none", fontWeight: 600,
+                  background: dayFilter === d.idx ? d.color : "#f0f0f0",
+                  color: dayFilter === d.idx ? "#fff" : "#555" }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={e => { e.stopPropagation(); onClose(); }}
+            style={{ background: "none", border: "none", fontSize: 20, color: "#aaa", cursor: "pointer",
+              lineHeight: 1, padding: "2px 4px", flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+
+        {/* ── Body: map + list ── */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+          {/* Map panel */}
+          <div style={{ flex: "0 0 62%", position: "relative" }}>
+            {loading && mappedEntries.length === 0 && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", background: "#f8f8f8", zIndex: 10, gap: 10 }}>
+                <div style={{ fontSize: 28 }}>📍</div>
+                <div style={{ fontSize: 13, color: "#888" }}>Geocoding locations…</div>
+              </div>
+            )}
+            <MapContainer center={centerPos} zoom={mappedEntries.length ? 10 : 4}
+              style={{ width: "100%", height: "100%" }}
+              scrollWheelZoom={true}
+              attributionControl={false}>
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='© OpenStreetMap contributors'
+              />
+              {mappedEntries.length > 0 && (
+                <MapBoundsUpdater positions={mappedEntries.map(e => coordsMap[e.id])} />
+              )}
+              {mappedEntries.map(e => {
+                const coord = coordsMap[e.id];
+                const isSelected = selectedId === e.id;
+                const icon = makePinIcon(e._dayColor, isSelected ? 36 : 28, verdictOpacity(e.verdict), coord.approximate);
+                return (
+                  <Marker
+                    key={e.id}
+                    position={[coord.lat, coord.lng]}
+                    icon={icon}
+                    ref={r => { markerRefs.current[e.id] = r; }}
+                    eventHandlers={{ click: () => scrollToEntry(e.id) }}>
+                    <Popup>
+                      <div style={{ minWidth: 140 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#000", marginBottom: 3 }}>{e.name}</div>
+                        <div style={{ fontSize: 11, color: "#666" }}>{e.city}{e.state ? `, ${e.state}` : ""}</div>
+                        {coord.approximate && (
+                          <div style={{ fontSize: 10, color: "#f39c12", marginTop: 3 }}>~ Approximate location</div>
+                        )}
+                        {e.verdict && (
+                          <div style={{ marginTop: 5, fontSize: 11, fontWeight: 600,
+                            color: e.verdict === "must_go" ? "#27ae60" : e.verdict === "skip" ? "#e74c3c" : "#888" }}>
+                            {e.verdict === "must_go" ? "✓ Must Go" : e.verdict === "skip" ? "✗ Skip" : ""}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 4, display: "inline-block", background: e._dayColor,
+                          color: "#fff", borderRadius: 4, padding: "1px 7px", fontSize: 10, fontWeight: 600 }}>
+                          {e._dayLabel}
+                        </div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+            </MapContainer>
+          </div>
+
+          {/* List panel */}
+          <div ref={listRef} style={{ flex: 1, overflowY: "auto", borderLeft: "1px solid #f0f0f0", padding: "12px 0" }}>
+            {filteredEntries.length === 0 && (
+              <div style={{ padding: "40px 20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>
+                No places for this day
+              </div>
+            )}
+            {uniqueDays
+              .filter(d => dayFilter === "all" || dayFilter === d.idx)
+              .map(day => {
+                const dayEntries = filteredEntries.filter(e => e._dayIdx === day.idx);
+                if (!dayEntries.length) return null;
+                return (
+                  <div key={day.idx}>
+                    {/* Day section header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px 6px",
+                      position: "sticky", top: 0, background: "#fff", zIndex: 2 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: day.color, flexShrink: 0 }} />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#000" }}>{day.label}</div>
+                    </div>
+                    {dayEntries.map((e, i) => {
+                      const hasCoord = !!coordsMap[e.id];
+                      const isSelected = selectedId === e.id;
+                      return (
+                        <div key={e.id} data-entry-id={e.id}
+                          onClick={() => hasCoord && flyToEntry(e)}
+                          style={{
+                            display: "flex", alignItems: "flex-start", gap: 10,
+                            padding: "9px 16px",
+                            cursor: hasCoord ? "pointer" : "default",
+                            background: isSelected ? "#fffbe6" : "transparent",
+                            borderLeft: isSelected ? `3px solid ${day.color}` : "3px solid transparent",
+                            transition: "background 0.15s",
+                          }}>
+                          <div style={{ width: 22, height: 22, borderRadius: "50%", background: day.color,
+                            color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 1,
+                            opacity: e.verdict === "skip" ? 0.4 : 1 }}>
+                            {i + 1}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#000",
+                              opacity: e.verdict === "skip" ? 0.5 : 1 }}>
+                              {e.name}
+                              {coordsMap[e.id]?.approximate && <span style={{ fontSize: 10, color: "#f39c12", marginLeft: 6 }}>~city area</span>}
+                              {!hasCoord && loading && <span style={{ fontSize: 10, color: "#bbb", marginLeft: 6 }}>locating…</span>}
+                              {!hasCoord && !loading && <span style={{ fontSize: 10, color: "#ccc", marginLeft: 6 }}>not mapped</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#999", marginTop: 1 }}>
+                              {e.city}{e.state ? `, ${e.state}` : ""}{e.cuisine ? ` · ${e.cuisine}` : ""}
+                            </div>
+                            {e.verdict && (
+                              <span style={{ fontSize: 10, fontWeight: 600, marginTop: 3, display: "inline-block",
+                                color: e.verdict === "must_go" ? "#27ae60" : e.verdict === "skip" ? "#e74c3c" : "#888" }}>
+                                {e.verdict === "must_go" ? "✓ Must Go" : e.verdict === "skip" ? "✗ Skip" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* ── Legend ── */}
+        <div style={{ borderTop: "1px solid #f0f0f0", padding: "8px 18px", display: "flex",
+          gap: 16, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "#aaa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Legend</span>
+          <span style={{ fontSize: 11, color: "#555", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 13 }}>●</span> Pin color = Day
+          </span>
+          <span style={{ fontSize: 11, color: "#27ae60", fontWeight: 600 }}>✓ Must Go</span>
+          <span style={{ fontSize: 11, color: "#e74c3c", fontWeight: 600 }}>✗ Skip (faded)</span>
+          <span style={{ fontSize: 11, color: "#f39c12", fontWeight: 600 }}>○ ~city area (outline pin)</span>
+          <span style={{ fontSize: 11, color: "#888" }}>Click pin → highlight row · Click row → open pin</span>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── MINI TRIP MAP (inline non-interactive preview) ──────────────────────────
+function MiniTripMap({ trip, onOpenFull }) {
+  const [coordsMap, setCoordsMap] = useState({});
+  const [done, setDone] = useState(false);
+
+  const allEntries = useMemo(() => {
+    if (!trip?.plan?.days) return [];
+    return trip.plan.days.flatMap((day, di) =>
+      (day.entries || day.items || []).map(e => ({
+        ...e, _dayIdx: di, _dayColor: DAY_COLORS[di % DAY_COLORS.length],
+      }))
+    );
+  }, [trip]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      for (const e of allEntries) {
+        if (cancelled) break;
+        const coord = await geocodeEntry(e);
+        if (!cancelled && coord) setCoordsMap(prev => ({ ...prev, [e.id]: coord }));
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (!cancelled) setDone(true);
+    }
+    run();
+    return () => { cancelled = true; };
+  }, [allEntries]);
+
+  const mapped = allEntries.filter(e => coordsMap[e.id]);
+
+  if (mapped.length === 0) {
+    return (
+      <div onClick={onOpenFull} style={{ height: 140, background: "#f8f8f8", display: "flex",
+        flexDirection: "column", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", gap: 6, borderBottom: "1px solid #f0f0f0" }}>
+        <div style={{ fontSize: 26 }}>🗺</div>
+        <div style={{ fontSize: 12, color: "#bbb" }}>{done ? "No locations found" : "Locating places…"}</div>
+        {done && <div style={{ fontSize: 11, color: "#ccc" }}>Tap to open map</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "relative", height: 150, borderBottom: "1px solid #f0f0f0" }}>
+      {/* Non-interactive map rendered under pointer-events:none wrapper */}
+      <div style={{ pointerEvents: "none", height: 150 }}>
+        <MapContainer center={[mapped[0] ? coordsMap[mapped[0].id].lat : 39.5, mapped[0] ? coordsMap[mapped[0].id].lng : -98.35]}
+          zoom={10} style={{ width: "100%", height: "100%" }}
+          dragging={false} scrollWheelZoom={false} zoomControl={false}
+          attributionControl={false} doubleClickZoom={false} touchZoom={false}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapBoundsUpdater positions={mapped.map(e => coordsMap[e.id])} />
+          {mapped.map(e => (
+            <Marker key={e.id} position={[coordsMap[e.id].lat, coordsMap[e.id].lng]}
+              icon={makePinIcon(e._dayColor, 22, 1, coordsMap[e.id].approximate)} />
+          ))}
+        </MapContainer>
+      </div>
+      {/* Transparent click overlay */}
+      <div onClick={onOpenFull} style={{ position: "absolute", inset: 0, cursor: "pointer", zIndex: 1000 }}>
+        <div style={{ position: "absolute", bottom: 10, right: 10 }}>
+          <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "5px 11px",
+            fontSize: 11, fontWeight: 600, color: "#333", boxShadow: "0 2px 8px rgba(0,0,0,0.13)",
+            backdropFilter: "blur(4px)" }}>
+            View Full Map →
+          </div>
+        </div>
+        <div style={{ position: "absolute", top: 10, left: 10 }}>
+          <div style={{ background: "rgba(255,255,255,0.85)", borderRadius: 8, padding: "3px 9px",
+            fontSize: 11, color: "#666", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }}>
+            {mapped.length} of {allEntries.length} places mapped
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SHARED TRIP CARD ────────────────────────────────────────────────────────
 function SharedTripCard({ trip, sharer, onImportToLogs }) {
   const [expanded, setExpanded] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+
+  const allEntries = (trip.plan?.days || []).flatMap(d => d.entries || d.items || []);
+  const previewNames = allEntries.slice(0, 3).map(e => e.name);
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-      {/* Header */}
-      <div onClick={() => setExpanded(!expanded)} style={{ padding: "16px 18px", cursor: "pointer" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#000" }}>🗺 {trip.destination}</div>
-            <div style={{ fontSize: 13, color: "#888", marginTop: 3 }}>
-              {trip.days} days · Shared by {sharer?.avatar} {sharer?.name || "a friend"} · {trip.sharedAt}
-            </div>
-          </div>
-          <span style={{ color: "#aaa", fontSize: 14, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
-        </div>
+    <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20,
+      boxShadow: "0 1px 6px rgba(0,0,0,0.06)", transition: "box-shadow 0.2s, transform 0.2s",
+      overflow: "hidden" }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 28px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 6px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "none"; }}>
 
-        {/* Place previews */}
-        {!expanded && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-            {(trip.plan?.days || []).flatMap(d => d.entries || []).slice(0, 4).map((e, i) => (
-              <span key={i} style={{ background: "#f8f8f8", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#555" }}>
-                {e.name}
+      {/* ── HEADER ── */}
+      <div onClick={() => setExpanded(!expanded)} style={{ padding: "20px 20px 16px", cursor: "pointer" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 19, fontWeight: 700, color: "#111", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
+              {trip.destination}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "#999" }}>{trip.days} day{trip.days !== 1 ? "s" : ""}</span>
+              <span style={{ color: "#ddd" }}>·</span>
+              <span style={{ fontSize: 12, color: "#999" }}>
+                Shared by {sharer?.avatar} {sharer?.name || "a friend"}
               </span>
-            ))}
+              <span style={{ color: "#ddd" }}>·</span>
+              <span style={{ fontSize: 12, color: "#bbb" }}>{trip.sharedAt}</span>
+              <span style={{ fontSize: 10, background: "#f0f7ff", color: "#60a5fa", borderRadius: 20,
+                padding: "2px 8px", fontWeight: 600, letterSpacing: "0.04em" }}>SHARED</span>
+            </div>
+            {/* Place name preview when collapsed */}
+            {!expanded && previewNames.length > 0 && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
+                {previewNames.map((name, i) => (
+                  <span key={i} style={{ background: "#f5f5f5", borderRadius: 20,
+                    padding: "3px 10px", fontSize: 11, color: "#888" }}>
+                    {name}
+                  </span>
+                ))}
+                {allEntries.length > 3 && (
+                  <span style={{ background: "#f5f5f5", borderRadius: 20,
+                    padding: "3px 10px", fontSize: 11, color: "#bbb" }}>
+                    +{allEntries.length - 3} more
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        )}
+          <div style={{ width: 28, height: 28, display: "flex", alignItems: "center",
+            justifyContent: "center", color: "#ccc", fontSize: 12,
+            transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</div>
+        </div>
       </div>
 
-      {/* Expanded itinerary */}
+      {/* ── EXPANDED BODY ── */}
       {expanded && trip.plan && (
-        <div onClick={e => e.stopPropagation()} style={{ borderTop: "1px solid #f5f5f5", padding: "16px 18px", background: "#fafafa" }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {onImportToLogs && (
-              <button onClick={() => onImportToLogs()}
-                style={{ flex: 1, background: "#f0f0f0", border: "none", borderRadius: 8, padding: "10px",
-                  fontSize: 13, color: "#555", cursor: "pointer" }}>
-                📍 Import All
-              </button>
-            )}
-            {(() => {
-              const allPlaces = (trip.plan?.days || []).flatMap(d => d.entries || d.items || []).filter(e => e.name);
-              if (allPlaces.length === 0) return null;
-              const origin = encodeURIComponent(allPlaces[0].name + " " + (allPlaces[0].city || trip.destination));
-              const destination = encodeURIComponent(allPlaces[allPlaces.length - 1].name + " " + (allPlaces[allPlaces.length - 1].city || trip.destination));
-              const waypoints = allPlaces.slice(1, -1).map(p => encodeURIComponent(p.name + " " + (p.city || trip.destination))).join("|");
-              const mapsUrl = "https://www.google.com/maps/dir/" + origin + "/" + (waypoints ? waypoints + "/" : "") + destination;
+        <div style={{ borderTop: "1px solid #f0f0f0" }}>
+
+          {/* Mini map */}
+          {allEntries.length > 0 && (
+            <MiniTripMap trip={trip} onOpenFull={() => setShowMapModal(true)} />
+          )}
+
+          {/* Timeline */}
+          <div style={{ padding: "20px 20px 24px" }}>
+            {trip.plan.days.map((day, dayIdx) => {
+              const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
+              const dayEntries = day.entries || day.items || [];
+              const isLast = dayIdx === trip.plan.days.length - 1;
+              const dayDate = trip.startDate ? (() => {
+                const d = new Date(trip.startDate + "T12:00:00");
+                d.setDate(d.getDate() + dayIdx);
+                return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              })() : null;
+
               return (
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ flex: 1, background: "#000", border: "none", borderRadius: 8, padding: "10px",
-                    fontSize: 13, color: "#fff", cursor: "pointer", textAlign: "center", textDecoration: "none",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 600 }}>
-                  🗺 Open in Maps
-                </a>
-              );
-            })()}
-          </div>
-          {trip.plan.days.map(day => (
-            <div key={day.day} style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ background: "#000", color: "#fff", borderRadius: "50%", width: 24, height: 24,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
-                  {day.day}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>Day {day.day} — {day.city}</div>
-              </div>
-              {day.activity && (
-                <div style={{ background: "#fff", borderRadius: 8, padding: "8px 12px", marginBottom: 6, border: "1px solid #efefef" }}>
-                  <div style={{ fontSize: 11, color: "#888", marginBottom: 2 }}>ACTIVITY</div>
-                  <div style={{ fontSize: 13, color: "#000" }}>{day.activity}</div>
-                </div>
-              )}
-              {(day.entries || []).map(e => (
-                <div key={e.id} style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", marginBottom: 4, border: "1px solid #efefef" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", hotel:"🏨", activity:"🏔" }[e.type] || "📍"}</span>
-                    <a href={"https://www.google.com/maps/search/" + encodeURIComponent(e.name + " " + (e.city || trip.destination || ""))}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 14, fontWeight: 500, color: "#000", flex: 1, textDecoration: "none" }}
-                      onClick={ev => ev.stopPropagation()}>
-                      {e.name} ↗
-                    </a>
-                    <button onClick={ev => { ev.stopPropagation(); onImportToLogs(e); }}
-                      style={{ background: "#f0f0f0", border: "none", borderRadius: 6,
-                        padding: "3px 8px", fontSize: 11, color: "#555", cursor: "pointer", flexShrink: 0 }}>
-                      + Log
-                    </button>
+                <div key={dayIdx} style={{ display: "flex", gap: 0, marginBottom: isLast ? 0 : 28 }}>
+                  {/* Timeline spine */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                    marginRight: 16, flexShrink: 0, width: 28 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: dayColor,
+                      color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800, flexShrink: 0,
+                      boxShadow: `0 0 0 3px ${dayColor}22` }}>
+                      {dayIdx + 1}
+                    </div>
+                    {!isLast && (
+                      <div style={{ width: 2, flex: 1, background: `${dayColor}30`,
+                        marginTop: 6, minHeight: 20, borderRadius: 1 }} />
+                    )}
                   </div>
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>{e.city} · {e.cuisine || e.type}</div>
+
+                  {/* Day content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Day header */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+                      marginBottom: 10, gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#111", lineHeight: 1.3 }}>
+                          {day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
+                        </div>
+                        {dayDate && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{dayDate}</div>}
+                      </div>
+                      <DayMapButton day={day} />
+                    </div>
+
+                    {day.activity && (
+                      <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8, fontStyle: "italic" }}>
+                        {day.activity}
+                      </div>
+                    )}
+
+                    {/* Place cards */}
+                    {dayEntries.map(e => (
+                      <div key={e.id} onClick={ev => ev.stopPropagation()}
+                        style={{ display: "flex", gap: 12, alignItems: "flex-start",
+                          padding: "11px 13px", marginBottom: 6,
+                          background: "#fff", border: "1px solid #efefef", borderRadius: 14,
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+
+                        {/* Type icon thumbnail */}
+                        <div style={{ width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+                          background: dayColor + "18", display: "flex", alignItems: "center",
+                          justifyContent: "center", fontSize: 20 }}>
+                          {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#111", lineHeight: 1.3 }}>
+                            {e.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>
+                            {[e.cuisine || e.type, e.city].filter(Boolean).join(" · ")}
+                          </div>
+                          {e.verdict && (
+                            <div style={{ marginTop: 5 }}>
+                              <VerdictBadge verdict={e.verdict} />
+                            </div>
+                          )}
+                          {e.notes && (
+                            <div style={{ fontSize: 11, color: "#ccc", marginTop: 4, fontStyle: "italic" }}>
+                              {e.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Log button */}
+                        <button onClick={ev => { ev.stopPropagation(); onImportToLogs(e); }}
+                          title="Log to diary"
+                          style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                            border: "1.5px solid #e0e0e0", background: "transparent", flexShrink: 0,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 13, color: "#ccc" }}>
+                          📍
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
+      )}
+
+      {/* Full map modal */}
+      {showMapModal && (
+        <TripMapModal trip={trip} onClose={() => setShowMapModal(false)} />
       )}
     </div>
   );
 }
 
 // ─── TRIP CARD COMPONENT ─────────────────────────────────────────────────────
-function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onShare }) {
-  const [expanded, setExpanded] = useState(false);
+function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onEdit, onShare, focusSection, onFocusHandled }) {
+  const cardRef = useRef(null);
+  const [expanded, setExpanded] = useState(!!focusSection);
   const [editing, setEditing] = useState(false);
-  const [search] = useState("");
-  const [showSharePicker, setShowSharePicker] = useState(false);
+  const [regenNotes, setRegenNotes] = useState(trip.notes || "");
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [regenError, setRegenError] = useState("");
+  const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showInviteDropdown, setShowInviteDropdown] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState("");
   const [shareSearch, setShareSearch] = useState("");
+  const [newReminderText, setNewReminderText] = useState("");
+  const [newPackItem, setNewPackItem] = useState("");
+  const [showPackList, setShowPackList] = useState(focusSection === "packList");
+  const [showBookRemind, setShowBookRemind] = useState(focusSection === "bookRemind");
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [overflowMenuPos, setOverflowMenuPos] = useState(null);
+  const overflowBtnRef = useRef(null);
 
-  const addDay = () => {
-    if (!onUpdate) return;
-    const newDay = {
-      day: trip.plan.days.length + 1,
-      city: trip.destination,
-      activity: `Day ${trip.plan.days.length + 1}`,
-      sectionNotes: "",
-      entries: []
-    };
-    onUpdate({ ...trip, days: trip.plan.days.length + 1, plan: { ...trip.plan, days: [...trip.plan.days, newDay] } });
+  useEffect(() => {
+    if (!expanded) setConfirmingComplete(false);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!focusSection) return;
+    const timer = setTimeout(() => {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      onFocusHandled && onFocusHandled();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showShareDropdown) return;
+    const close = () => { setShowShareDropdown(false); setShareSearch(""); };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showShareDropdown]);
+
+  useEffect(() => {
+    if (!showInviteDropdown) return;
+    const close = () => { setShowInviteDropdown(false); setInviteSearch(""); };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showInviteDropdown]);
+
+  useEffect(() => {
+    if (!showOverflowMenu) return;
+    const close = () => setShowOverflowMenu(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showOverflowMenu]);
+
+  const openOverflowMenu = (e) => {
+    e.stopPropagation();
+    const rect = overflowBtnRef.current?.getBoundingClientRect();
+    if (rect) setOverflowMenuPos({ top: rect.bottom + window.scrollY + 6, right: window.innerWidth - rect.right });
+    setShowOverflowMenu(v => !v);
   };
 
-  const deleteDay = (dayIdx) => {
+  const toggleVisited = (dayIdx, entryId) => {
     if (!onUpdate) return;
-    const newDays = trip.plan.days
-      .filter((_, i) => i !== dayIdx)
-      .map((d, i) => ({ ...d, day: i + 1 }));
-    onUpdate({ ...trip, days: newDays.length, plan: { ...trip.plan, days: newDays } });
+    const newDays = trip.plan.days.map((d, i) =>
+      i === dayIdx
+        ? { ...d, entries: (d.entries || d.items || []).map(e => e.id === entryId ? { ...e, visited: !e.visited } : e) }
+        : d
+    );
+    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+  };
+
+  const regenerateFromNotes = async () => {
+    if (!regenNotes.trim()) return;
+    setRegenLoading(true);
+    setRegenError("");
+    try {
+      const n = trip.plan.days.length;
+      const dest = trip.destination || "the destination";
+      const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
+      if (!apiKey) throw new Error("No API key — paste your sk-ant-... key into HARDCODED_API_KEY.");
+      const existingPlaces = trip.plan.days
+        .flatMap(d => (d.entries || []).map(e => `${e.name}${e.city ? " (" + e.city + ")" : ""}`))
+        .join(", ");
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2500,
+          messages: [{
+            role: "user",
+            content: `You are an expert travel itinerary planner. Rebuild this ${n}-day trip to ${dest} using the updated notes below.
+
+Instructions:
+1. Extract every place, restaurant, bar, attraction, or activity mentioned in the notes.
+2. Group places by neighborhood or geographic area — places within walking distance or a short drive go on the same day.
+3. Name each day after its area: "Day 1 — Downtown & LoDo", "Day 2 — RiNo & Five Points", etc.
+4. Order days logically as a loop: start near arrival, explore outward, end near departure.
+5. 3–5 places per day, ordered by time of day: breakfast → lunch → afternoon → dinner → bar/evening.
+6. For each place infer type (restaurant/cafe/brewery/bar/activity/hiking), cuisine if food, city if mentioned.
+7. "Must go" / "highly recommend" → verdict "must_go". Otherwise "want_to_try".
+8. If user specifies a day for a place ("Day 2: Red Rocks"), honor it.
+9. Default city to ${dest} if not mentioned. Do not invent places.${existingPlaces ? `\nCurrently in the trip: ${existingPlaces}` : ""}
+
+Updated notes:
+<user_notes>${regenNotes}</user_notes>
+
+Return ONLY valid JSON, no explanation, no markdown fences:
+{"days":[{"id":"s1","name":"Day 1 — Neighborhood","entries":[{"id":"i1_1","name":"Place Name","type":"restaurant","notes":"tip","city":"City","state":"CO","verdict":"must_go","cuisine":"Italian"}]}]}`
+          }]
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      const text = data.content?.[0]?.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("AI response didn't contain valid JSON.");
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.days && parsed.days.length > 0) {
+        const newDays = parsed.days.map((d, i) => ({
+          ...d,
+          day: i + 1,
+          name: d.name,
+          entries: (d.entries || d.items || []).map((e, j) => ({
+            id: e.id || ("r_" + i + "_" + j),
+            name: e.name, type: e.type || "activity",
+            city: e.city || dest, state: e.state || "",
+            verdict: e.verdict || "must_go",
+            cuisine: e.cuisine || "", notes: e.notes || e.note || ""
+          }))
+        }));
+        onUpdate({ ...trip, notes: regenNotes, plan: { ...trip.plan, days: newDays } });
+        setRegenError("");
+      } else {
+        throw new Error("AI returned an empty plan.");
+      }
+    } catch(err) {
+      setRegenError("Could not regenerate: " + (err.message || "Unknown error"));
+    }
+    setRegenLoading(false);
   };
 
   const removePlace = (dayIdx, entryId) => {
@@ -2703,359 +3784,589 @@ function TripCard({ trip, entries, onDelete, onComplete, past, friendState, allU
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
-  const movePlace = (fromDayIdx, toDayIdx, entry) => {
-    if (!onUpdate || fromDayIdx === toDayIdx) return;
-    const newDays = trip.plan.days.map((d, i) => {
-      if (i === fromDayIdx) return { ...d, entries: (d.entries || d.items || []).filter(e => e.id !== entry.id) };
-      if (i === toDayIdx) return { ...d, entries: [...(d.entries || d.items || []), entry] };
-      return d;
-    });
+  const updateDayName = (dayIdx, name) => {
+    if (!onUpdate) return;
+    const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, name } : d);
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
-  const moveDay = (dayIdx, dir) => {
+  const updateDayNotes = (dayIdx, notes) => {
     if (!onUpdate) return;
-    const days = [...trip.plan.days];
-    const target = dayIdx + dir;
-    if (target < 0 || target >= days.length) return;
-    [days[dayIdx], days[target]] = [days[target], days[dayIdx]];
-    const renumbered = days.map((d, i) => ({ ...d, day: i + 1 }));
-    onUpdate({ ...trip, plan: { ...trip.plan, days: renumbered } });
+    const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, notes } : d);
+    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+  };
+
+  const addPlace = (dayIdx, name) => {
+    if (!onUpdate || !name.trim()) return;
+    const newEntry = { id: "q_" + Date.now(), name: name.trim(), type: "activity", city: trip.destination, state: "", verdict: "must_go", cuisine: "" };
+    const newDays = trip.plan.days.map((d, i) =>
+      i === dayIdx ? { ...d, entries: [...(d.entries || d.items || []), newEntry] } : d
+    );
+    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
   const allEntries = entries ? entries.filter(e => e.userId !== "u1" || e.isActivity) : [];
 
 
+  // Progress counts
+  const allPlanEntries = trip.plan ? trip.plan.days.flatMap(d => d.entries || d.items || []) : [];
+  const totalPlaces = allPlanEntries.length;
+  const visitedCount = allPlanEntries.filter(e => e.visited).length;
+
+  // Date range string
+  const dateStr = trip.startDate
+    ? new Date(trip.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+      (trip.endDate ? " – " + new Date(trip.endDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "")
+    : trip.createdAt;
+
+  // Overflow menu item helper
+  const OMenuItem = ({ icon, label, onClick, danger }) => (
+    <div onClick={onClick}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 16px", cursor: "pointer",
+        color: danger ? "#ef4444" : "#222", fontSize: 13, transition: "background 0.1s" }}
+      onMouseEnter={e => e.currentTarget.style.background = "#f7f7f7"}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+      <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{icon}</span>
+      {label}
+    </div>
+  );
+
   return (
-    <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-      {/* Header */}
-      <div onClick={() => setExpanded(!expanded)} style={{ padding: "16px 18px", cursor: "pointer" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#000" }}>🗺 {trip.destination}</div>
-            <div style={{ fontSize: 13, color: "#888", marginTop: 3 }}>
-              {trip.days} days · {trip.kids ? "Family" : "Adults"} · {trip.createdAt}
+    <div ref={cardRef} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20,
+      boxShadow: "0 1px 6px rgba(0,0,0,0.06)", transition: "box-shadow 0.2s, transform 0.2s",
+      overflow: "hidden" }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 28px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 6px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "none"; }}>
+      {/* ── HEADER ── */}
+      <div onClick={() => setExpanded(!expanded)} style={{ padding: "20px 20px 16px", cursor: "pointer" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+
+          {/* Left: title + meta */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 19, fontWeight: 700, color: "#111", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
+              {trip.destination}
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "#999" }}>{trip.days} day{trip.days !== 1 ? "s" : ""}</span>
+              <span style={{ color: "#ddd" }}>·</span>
+              <span style={{ fontSize: 12, color: "#999" }}>{trip.kids ? "Family" : "Adults"}</span>
+              <span style={{ color: "#ddd" }}>·</span>
+              <span style={{ fontSize: 12, color: "#999" }}>{dateStr}</span>
+              {past && <span style={{ fontSize: 10, background: "#f4f4f4", color: "#aaa", borderRadius: 20, padding: "2px 8px", fontWeight: 600, letterSpacing: "0.04em" }}>PAST</span>}
+            </div>
+            {/* Mini progress strip (collapsed state) */}
+            {!expanded && totalPlaces > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <div style={{ flex: 1, maxWidth: 120, height: 3, background: "#f0f0f0", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${(visitedCount / totalPlaces) * 100}%`,
+                    background: visitedCount === totalPlaces ? "#22c55e" : "#111", borderRadius: 2,
+                    transition: "width 0.4s" }} />
+                </div>
+                <span style={{ fontSize: 11, color: "#bbb" }}>{visitedCount}/{totalPlaces}</span>
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
 
-            {!past && onComplete && (
-              <button onClick={e => { e.stopPropagation(); onComplete(); }}
-                style={{ background: "#f0f0f0", border: "none", borderRadius: 6, padding: "5px 10px",
-                  fontSize: 11, color: "#555", cursor: "pointer" }}>
-                ✓ Done
-              </button>
-            )}
-
-            {!past && onUpdate && (
-              <button onClick={e => { e.stopPropagation(); setEditing(!editing); setExpanded(true); }}
-                style={{ background: editing ? "#000" : "#f0f0f0", border: "none", borderRadius: 6, padding: "5px 10px",
-                  fontSize: 11, color: editing ? "#fff" : "#555", cursor: "pointer" }}>
-                ✏️ Edit
-              </button>
-            )}
-            {onShare && (
-              <button onClick={e => { e.stopPropagation(); setShowSharePicker(!showSharePicker); setExpanded(true); }}
-                style={{ background: showSharePicker ? "#000" : "#f0f0f0", border: "none", borderRadius: 6, padding: "5px 10px",
-                  fontSize: 11, color: showSharePicker ? "#fff" : "#555", cursor: "pointer" }}>
-                {past ? "🔗 Share" : "👥 Invite"}
-              </button>
-            )}
-            <button onClick={e => { e.stopPropagation(); onDelete(); }}
-              style={{ background: "transparent", border: "1px solid #efefef", borderRadius: 6, padding: "5px 10px",
-                fontSize: 11, color: "#aaa", cursor: "pointer" }}>
-              Delete
+          {/* Right: ⋯ menu + chevron */}
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+            {/* ⋯ overflow button */}
+            <button ref={overflowBtnRef} onClick={openOverflowMenu}
+              style={{ width: 34, height: 34, background: showOverflowMenu ? "#f2f2f2" : "transparent",
+                border: "1px solid #e8e8e8", borderRadius: 10, cursor: "pointer", fontSize: 16,
+                color: "#555", display: "flex", alignItems: "center", justifyContent: "center",
+                letterSpacing: "2px", lineHeight: 1, fontWeight: 700 }}>
+              ···
             </button>
-            <span style={{ color: "#aaa", fontSize: 14, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+            {/* Chevron */}
+            <div style={{ width: 28, height: 28, display: "flex", alignItems: "center",
+              justifyContent: "center", color: "#ccc", fontSize: 12,
+              transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</div>
           </div>
         </div>
 
-        {/* Invited & Shared friends */}
-        {((trip.invitedFriends && trip.invitedFriends.length > 0) || (trip.sharedWithList && trip.sharedWithList.length > 0) || trip.sharedWith) && (
-          <div style={{ marginTop: 10 }}>
-            {trip.invitedFriends && trip.invitedFriends.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: "#888", fontWeight: 600 }}>{past ? "👥 TRAVELED WITH" : "👥 PLANNING WITH"}</span>
-                {trip.invitedFriends.map(uid => {
-                  const u = (allUsers || []).find(x => x.id === uid);
-                  if (!u) return null;
-                  return (
-                    <span key={uid} style={{ background: past ? "#f0fdf4" : "#f0f7ff", border: `1px solid ${past ? "#bbf7d0" : "#dbeafe"}`, borderRadius: 20,
-                      padding: "2px 10px", fontSize: 12, color: past ? "#16a34a" : "#3b82f6" }}>
-                      {u.avatar} {u.name.split(" ")[0]}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            {(trip.sharedWith || trip.sharedWithList) && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "#888", fontWeight: 600 }}>🔗 SHARED WITH</span>
-                {(trip.sharedWithList || (trip.sharedWith ? [trip.sharedWith] : [])).map(uid => {
-                  const u = (allUsers || []).find(x => x.id === uid);
-                  return u ? (
-                    <span key={uid} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 20,
-                      padding: "2px 10px", fontSize: 12, color: "#16a34a" }}>
-                      {u.avatar} {u.name.split(" ")[0]}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            )}
-          </div>
-        )}
-        {trip.invitedFriends && trip.invitedFriends.length > 0 && false && (
-          <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+        {/* Invited friends chips */}
+        {!past && (trip.invitedFriends || []).length > 0 && (
+          <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
             {trip.invitedFriends.map(uid => {
-              const u = allUsers.find(x => x.id === uid);
-              if (!u) return null;
-              return (
-                <span key={uid} style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 20,
-                  padding: "3px 10px", fontSize: 12, color: "#555" }}>
+              const u = allUsers?.find(x => x.id === uid);
+              return u ? (
+                <span key={uid} style={{ background: "#f7f7f7", border: "1px solid #efefef",
+                  borderRadius: 20, padding: "3px 10px", fontSize: 11, color: "#666" }}>
                   {u.avatar} {u.name.split(" ")[0]}
                 </span>
-              );
+              ) : null;
+            })}
+          </div>
+        )}
+        {/* Shared with chips */}
+        {past && (trip.sharedWith || []).length > 0 && (
+          <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
+            {trip.sharedWith.map(uid => {
+              const u = (allUsers || []).find(x => x.id === uid);
+              return u ? (
+                <span key={uid} style={{ background: "#f7f7f7", border: "1px solid #efefef",
+                  borderRadius: 20, padding: "3px 10px", fontSize: 11, color: "#666" }}>
+                  {u.avatar} {u.name.split(" ")[0]}
+                </span>
+              ) : null;
             })}
           </div>
         )}
       </div>
 
-      {/* Expanded itinerary */}
-
-
-      {expanded && trip.plan && (
-        <div onClick={e => e.stopPropagation()} style={{ borderTop: "1px solid #f5f5f5", padding: "16px 18px", background: "#fafafa" }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {onImportToLogs && (
-              <button onClick={() => onImportToLogs()}
-                style={{ flex: 1, background: "#f0f0f0", border: "none", borderRadius: 8, padding: "10px",
-                  fontSize: 13, color: "#555", cursor: "pointer" }}>
-                📍 Import All
-              </button>
-            )}
-            {(() => {
-              const allPlaces = (trip.plan?.days || []).flatMap(d => d.entries || d.items || []).filter(e => e.name);
-              if (allPlaces.length === 0) return null;
-              const origin = encodeURIComponent(allPlaces[0].name + " " + (allPlaces[0].city || trip.destination));
-              const destination = encodeURIComponent(allPlaces[allPlaces.length - 1].name + " " + (allPlaces[allPlaces.length - 1].city || trip.destination));
-              const waypoints = allPlaces.slice(1, -1).map(p => encodeURIComponent(p.name + " " + (p.city || trip.destination))).join("|");
-              const mapsUrl = "https://www.google.com/maps/dir/" + origin + "/" + (waypoints ? waypoints + "/" : "") + destination;
-              return (
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ flex: 1, background: "#000", border: "none", borderRadius: 8, padding: "10px",
-                    fontSize: 13, color: "#fff", cursor: "pointer", textAlign: "center", textDecoration: "none",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 600 }}>
-                  🗺 Open in Maps
-                </a>
-              );
-            })()}
+      {/* ── INVITE PANEL (inline, triggered from ⋯) ── */}
+      {showInviteDropdown && (
+        <div onClick={e => e.stopPropagation()}
+          style={{ margin: "0 20px 16px", background: "#fafafa", border: "1px solid #efefef",
+            borderRadius: 14, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#555", marginBottom: 10, letterSpacing: "0.04em" }}>
+            👥 INVITE FRIENDS
           </div>
-          {/* Share picker */}
-          {showSharePicker && (
-            <div style={{ marginBottom: 16, background: "#f8f8f8", borderRadius: 10, padding: "14px" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#000", marginBottom: 10 }}>{past ? "Share trip with..." : "Invite to edit trip..."}</div>
-              <input
-                value={shareSearch}
-                onChange={e => setShareSearch(e.target.value)}
-                placeholder="🔍 Search friends..."
-                style={{ width: "100%", background: "#fff", border: "1px solid #efefef", borderRadius: 8,
-                  padding: "8px 12px", fontSize: 13, color: "#000", outline: "none",
-                  boxSizing: "border-box", marginBottom: 10 }}
-              />
-              {(allUsers || []).filter(u => friendState && friendState[u.id] === "friend"
-                && (shareSearch.trim() === "" || u.name.toLowerCase().includes(shareSearch.toLowerCase()))).length === 0 ? (
-                <div style={{ fontSize: 13, color: "#aaa" }}>No friends found.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 200, overflowY: "auto" }}>
-                  {(allUsers || []).filter(u => friendState && friendState[u.id] === "friend"
-                    && (shareSearch.trim() === "" || u.name.toLowerCase().includes(shareSearch.toLowerCase()))).map(u => (
-                    <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 20 }}>{u.avatar}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "#000" }}>{u.name}</div>
-                        <div style={{ fontSize: 11, color: "#888" }}>@{u.username}</div>
-                      </div>
-                      <button onClick={() => { if (!past && onInviteFriend) { onInviteFriend(u.id); } else { onShare(u.id, u.name); } setShowSharePicker(false); setShareSearch(""); }}
-                        style={{ background: "#000", border: "none", borderRadius: 8, padding: "6px 14px",
-                          color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                        Share
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {(trip.invitedFriends || []).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+              {(trip.invitedFriends || []).map(uid => {
+                const u = (allUsers || []).find(x => x.id === uid);
+                return u ? (
+                  <span key={uid} onClick={() => onInviteFriend(uid)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#111",
+                      color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>
+                    {u.avatar} {u.name.split(" ")[0]} <span style={{ opacity: 0.6, fontSize: 11 }}>✕</span>
+                  </span>
+                ) : null;
+              })}
             </div>
           )}
-
-          {/* Search to add places when editing */}
-          {editing && (
-            <div style={{ marginBottom: 16, background: "#f0f0f0", borderRadius: 8, padding: "12px 14px" }}>
-              <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
-                🔍 <strong>Add places</strong> — Google Places search coming soon. For now, remove unwanted places using the Remove button on each entry.
-              </div>
-            </div>
-          )}
-
-          {trip.plan.days.map((day, dayIdx) => (
-            <div key={day.day} style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <div style={{ background: "#000", color: "#fff", borderRadius: "50%", width: 24, height: 24,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
-                  {day.day}
-                </div>
-                {editing ? (
-                  <>
-                    <input
-                      value={day.activity || ""}
-                      onChange={e => {
-                        if (!onUpdate) return;
-                        const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, activity: e.target.value } : d);
-                        onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
-                      }}
-                      placeholder="Day title..."
-                      style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "#000", border: "none",
-                        borderBottom: "1px solid #ddd", outline: "none", background: "transparent", padding: "2px 4px" }}
-                    />
-                    <button onClick={() => moveDay(dayIdx, -1)} disabled={dayIdx === 0}
-                      style={{ background: "none", border: "none", color: dayIdx === 0 ? "#ddd" : "#888", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>↑</button>
-                    <button onClick={() => moveDay(dayIdx, 1)} disabled={dayIdx === trip.plan.days.length - 1}
-                      style={{ background: "none", border: "none", color: dayIdx === trip.plan.days.length - 1 ? "#ddd" : "#888", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>↓</button>
-                    <button onClick={() => removeDay(dayIdx)}
-                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, padding: "0 2px" }}>✕</button>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#000" }}>{day.activity && day.activity !== `Day ${day.day}` ? `Day ${day.day} — ${day.activity}` : `Day ${day.day}`}{!day.activity && day.city ? ` — ${day.city}` : ""}</div>
-                )}
-                {editing && (
-                  <button onClick={() => deleteDay(dayIdx)}
-                    style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px",
-                      fontSize: 11, color: "#ef4444", cursor: "pointer", flexShrink: 0 }}>
-                    Delete Day
-                  </button>
-                )}
-              </div>
-              {editing ? (
-                <textarea
-                  value={day.sectionNotes || ""}
-                  onChange={e => {
-                    if (!onUpdate) return;
-                    const newDays = trip.plan.days.map((d, i) => i === dayIdx ? { ...d, sectionNotes: e.target.value } : d);
-                    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
-                  }}
-                  placeholder="Add notes for this day..."
-                  rows={2}
-                  style={{ width: "100%", fontSize: 12, color: "#555", border: "1px solid #efefef",
-                    borderRadius: 6, padding: "6px 10px", marginBottom: 8, resize: "none",
-                    outline: "none", boxSizing: "border-box", lineHeight: 1.5 }}
-                />
-              ) : (
-                day.sectionNotes && (
-                  <div style={{ fontSize: 12, color: "#888", marginBottom: 8, padding: "6px 10px",
-                    background: "#fff", borderRadius: 6, border: "1px solid #efefef", lineHeight: 1.5 }}>
-                    {day.sectionNotes}
-                  </div>
-                )
-              )}
-              {/* Hotel stays */}
-              {(day.entries || day.items || []).filter(e => e.type === "hotel").length > 0 && (
-                <div style={{ background: "#f0f7ff", border: "1px solid #dbeafe", borderRadius: 8, padding: "8px 12px", marginBottom: 6 }}>
-                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 600, marginBottom: 4 }}>🏨 STAYING AT</div>
-                  {(day.entries || day.items || []).filter(e => e.type === "hotel").map(e => (
-                    <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: "#000", flex: 1 }}>{e.name}</span>
-                      {editing && (
-                        <button onClick={ev => { ev.stopPropagation(); removePlace(dayIdx, e.id); }}
-                          style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "#ef4444", cursor: "pointer" }}>
-                          Remove
-                        </button>
-                      )}
-                      {!editing && onImportToLogs && (
-                        <button onClick={ev => { ev.stopPropagation(); onImportSingle({ ...e, id: "imp_" + e.id + "_" + Date.now(), userId: "u1", type: "hotel" }); }}
-                          style={{ background: "#f0f0f0", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "#555", cursor: "pointer" }}>
-                          + Log
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(day.entries || day.items || []).filter(e => e.type !== "hotel").map(e => (
-                <div key={e.id} style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", marginBottom: 4, border: "1px solid #efefef" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>{{ restaurant: "🍽", brewery: "🍺", cafe: "☕", hotel: "🏨", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}</span>
-                    <a href={"https://www.google.com/maps/search/" + encodeURIComponent(e.name + " " + (e.city || trip.destination || ""))}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 14, fontWeight: 500, color: "#000", flex: 1, textDecoration: "none" }}
-                      onClick={ev => ev.stopPropagation()}>
-                      {e.name} ↗
-                    </a>
-                    {editing && (
-                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onClick={ev => ev.stopPropagation()}>
-                        {trip.plan.days.length > 1 && (
-                          <select
-                            defaultValue=""
-                            onChange={ev => {
-                              if (ev.target.value !== "") {
-                                movePlace(dayIdx, parseInt(ev.target.value), e);
-                                ev.target.value = "";
-                              }
-                            }}
-                            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 6,
-                              padding: "3px 8px", fontSize: 11, color: "#555", cursor: "pointer", outline: "none" }}>
-                            <option value="" disabled>Move to...</option>
-                            {trip.plan.days.map((d, i) => i !== dayIdx && (
-                              <option key={i} value={i}>Day {d.day}</option>
-                            ))}
-                          </select>
-                        )}
-                        <button onClick={ev => { ev.stopPropagation(); removePlace(dayIdx, e.id); }}
-                          style={{ background: "#fee2e2", border: "none", borderRadius: 6,
-                            padding: "3px 8px", fontSize: 11, color: "#ef4444", cursor: "pointer" }}>
-                          Remove
-                        </button>
-                      </div>
-                    )}
-                    {(!editing || past) && onImportSingle && (
-                      <button onClick={ev => {
-                        ev.stopPropagation();
-                        onImportSingle(e);
-                      }}
-                        style={{ background: "#f0f0f0", border: "none", borderRadius: 6,
-                          padding: "3px 8px", fontSize: 11, color: "#555", cursor: "pointer", flexShrink: 0 }}>
-                        + Log
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>{e.city} · {e.cuisine || e.type}</div>
+          <input autoFocus value={inviteSearch} onChange={e => setInviteSearch(e.target.value)}
+            placeholder="Search friends…"
+            style={{ width: "100%", boxSizing: "border-box", border: "1px solid #e8e8e8", borderRadius: 8,
+              padding: "8px 12px", fontSize: 13, outline: "none", background: "#fff", color: "#222" }} />
+          <div style={{ marginTop: 6 }}>
+            {(allUsers || []).filter(u => friendState?.[u.id] === "friend" &&
+              (!inviteSearch.trim() || u.name.toLowerCase().includes(inviteSearch.toLowerCase())))
+              .map(u => (
+                <div key={u.id} onClick={() => onInviteFriend(u.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px",
+                    cursor: "pointer", borderRadius: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#f0f0f0"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ fontSize: 18 }}>{u.avatar}</span>
+                  <span style={{ fontSize: 13, color: "#222", flex: 1 }}>{u.name}</span>
+                  {(trip.invitedFriends || []).includes(u.id) && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
                 </div>
               ))}
-              {editing && (
-                <div style={{ fontSize: 12, color: "#aaa", textAlign: "center", padding: "6px 0" }}>
-                  Search above to add places to Day {day.day}
-                </div>
-              )}
+          </div>
+          <button onClick={() => { setShowInviteDropdown(false); setInviteSearch(""); }}
+            style={{ marginTop: 10, width: "100%", background: "#111", border: "none", borderRadius: 8,
+              padding: "9px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Done
+          </button>
+        </div>
+      )}
+
+      {/* ── SHARE PANEL (inline, triggered from ⋯) ── */}
+      {showShareDropdown && (
+        <div onClick={e => e.stopPropagation()}
+          style={{ margin: "0 20px 16px", background: "#fafafa", border: "1px solid #efefef",
+            borderRadius: 14, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#555", marginBottom: 10, letterSpacing: "0.04em" }}>
+            🔗 SHARE TRIP
+          </div>
+          {(trip.sharedWith || []).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+              {(trip.sharedWith || []).map(uid => {
+                const u = (allUsers || []).find(x => x.id === uid);
+                return u ? (
+                  <span key={uid} onClick={() => onShare(uid)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#111",
+                      color: "#fff", borderRadius: 20, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>
+                    {u.avatar} {u.name.split(" ")[0]} <span style={{ opacity: 0.6, fontSize: 11 }}>✕</span>
+                  </span>
+                ) : null;
+              })}
             </div>
-          ))}
-          {editing && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-              <button onClick={addDay}
-                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px",
-                  color: "#555", fontSize: 13, cursor: "pointer" }}>
-                + Add Day
+          )}
+          <input autoFocus value={shareSearch} onChange={e => setShareSearch(e.target.value)}
+            placeholder="Search friends…"
+            style={{ width: "100%", boxSizing: "border-box", border: "1px solid #e8e8e8", borderRadius: 8,
+              padding: "8px 12px", fontSize: 13, outline: "none", background: "#fff", color: "#222" }} />
+          <div style={{ marginTop: 6 }}>
+            {(allUsers || []).filter(u => friendState?.[u.id] === "friend" &&
+              (!shareSearch.trim() || u.name.toLowerCase().includes(shareSearch.toLowerCase())))
+              .map(u => (
+                <div key={u.id} onClick={() => onShare(u.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px",
+                    cursor: "pointer", borderRadius: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#f0f0f0"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <span style={{ fontSize: 18 }}>{u.avatar}</span>
+                  <span style={{ fontSize: 13, color: "#222", flex: 1 }}>{u.name}</span>
+                  {(trip.sharedWith || []).includes(u.id) && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
+                </div>
+              ))}
+          </div>
+          <button onClick={() => { setShowShareDropdown(false); setShareSearch(""); }}
+            style={{ marginTop: 10, width: "100%", background: "#111", border: "none", borderRadius: 8,
+              padding: "9px", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Done
+          </button>
+        </div>
+      )}
+
+      {/* ── EXPANDED BODY ── */}
+      {expanded && trip.plan && (
+        <div style={{ borderTop: "1px solid #f0f0f0" }}>
+
+          {/* Mini map preview */}
+          {trip.plan.days.some(d => (d.entries || d.items || []).length > 0) && (
+            <MiniTripMap trip={trip} onOpenFull={() => setShowMapModal(true)} />
+          )}
+
+          {/* Progress bar */}
+          {totalPlaces > 0 && (
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid #f5f5f5" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#aaa", letterSpacing: "0.07em", textTransform: "uppercase" }}>Progress</span>
+                <span style={{ fontSize: 12, color: "#888" }}>
+                  {visitedCount} / {totalPlaces} visited
+                  {visitedCount === totalPlaces && totalPlaces > 0 && " 🎉"}
+                </span>
+              </div>
+              <div style={{ height: 5, background: "#f0f0f0", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.round((visitedCount / totalPlaces) * 100)}%`,
+                  background: visitedCount === totalPlaces ? "#22c55e" : "#111", borderRadius: 3,
+                  transition: "width 0.4s ease" }} />
+              </div>
+            </div>
+          )}
+
+          {/* Collapsed utility sections */}
+          {!past && (
+            <div style={{ padding: "12px 20px", display: "flex", gap: 8, borderBottom: "1px solid #f5f5f5", flexWrap: "wrap" }}>
+              <button onClick={e => { e.stopPropagation(); setShowBookRemind(v => !v); }}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: showBookRemind ? "#111" : "#f5f5f5",
+                  border: "none", borderRadius: 10, padding: "7px 13px", cursor: "pointer",
+                  fontSize: 12, fontWeight: 500, color: showBookRemind ? "#fff" : "#555", transition: "all 0.15s" }}>
+                📋 Book & Reserve
+                {(trip.reminders || []).length > 0 && (
+                  <span style={{ background: showBookRemind ? "rgba(255,255,255,0.25)" : "#ddd", borderRadius: 20,
+                    padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                    {(trip.reminders || []).length}
+                  </span>
+                )}
               </button>
-              <button onClick={() => setEditing(false)}
-                style={{ width: "100%", background: "#000", border: "none", borderRadius: 8, padding: "10px",
-                  color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                Done Editing
+              <button onClick={e => { e.stopPropagation(); setShowPackList(v => !v); }}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: showPackList ? "#111" : "#f5f5f5",
+                  border: "none", borderRadius: 10, padding: "7px 13px", cursor: "pointer",
+                  fontSize: 12, fontWeight: 500, color: showPackList ? "#fff" : "#555", transition: "all 0.15s" }}>
+                🎒 Pack List
+                {(trip.packList || []).length > 0 && (
+                  <span style={{ background: showPackList ? "rgba(255,255,255,0.25)" : "#ddd", borderRadius: 20,
+                    padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                    {(trip.packList || []).filter(x => x.packed).length}/{(trip.packList || []).length}
+                  </span>
+                )}
               </button>
             </div>
           )}
+
+          {/* Book & Reserve panel */}
+          {showBookRemind && !past && (
+            <div onClick={e => e.stopPropagation()}
+              style={{ padding: "12px 20px 16px", borderBottom: "1px solid #f5f5f5", background: "#fafafa" }}>
+              {(trip.reminders || []).length === 0 && (
+                <div style={{ fontSize: 12, color: "#bbb", fontStyle: "italic", marginBottom: 8 }}>No notes yet</div>
+              )}
+              {(trip.reminders || []).map(r => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8,
+                  background: "#fff", borderRadius: 10, padding: "9px 12px", border: "1px solid #f0f0f0" }}>
+                  <div style={{ flex: 1, fontSize: 13, color: "#222" }}>{r.text}</div>
+                  <button onClick={() => onUpdate && onUpdate({ ...trip, reminders: (trip.reminders || []).filter(x => x.id !== r.id) })}
+                    style={{ background: "none", border: "none", color: "#ccc", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <input value={newReminderText} onChange={e => setNewReminderText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newReminderText.trim()) {
+                      onUpdate && onUpdate({ ...trip, reminders: [...(trip.reminders || []), { id: "r_" + Date.now(), text: newReminderText.trim() }] });
+                      setNewReminderText("");
+                    }
+                  }}
+                  placeholder="e.g. Book restaurant reservation"
+                  style={{ flex: 1, background: "#fff", border: "1px solid #e8e8e8", borderRadius: 8,
+                    padding: "8px 12px", fontSize: 12, color: "#222", outline: "none" }} />
+                <button onClick={() => {
+                  if (!newReminderText.trim()) return;
+                  onUpdate && onUpdate({ ...trip, reminders: [...(trip.reminders || []), { id: "r_" + Date.now(), text: newReminderText.trim() }] });
+                  setNewReminderText("");
+                }} style={{ background: "#111", border: "none", borderRadius: 8, padding: "8px 14px",
+                  color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>+ Add</button>
+              </div>
+            </div>
+          )}
+
+          {/* Pack List panel */}
+          {showPackList && !past && (
+            <div onClick={e => e.stopPropagation()}
+              style={{ padding: "12px 20px 16px", borderBottom: "1px solid #f5f5f5", background: "#fafafa" }}>
+              {(trip.packList || []).length === 0 && (
+                <div style={{ fontSize: 12, color: "#bbb", fontStyle: "italic", marginBottom: 8 }}>Nothing added yet</div>
+              )}
+              {(trip.packList || []).map(item => (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6,
+                  background: "#fff", borderRadius: 10, padding: "9px 12px", border: "1px solid #f0f0f0" }}>
+                  <input type="checkbox" checked={item.packed} onChange={() =>
+                    onUpdate && onUpdate({ ...trip, packList: (trip.packList || []).map(x => x.id === item.id ? { ...x, packed: !x.packed } : x) })}
+                    style={{ cursor: "pointer", accentColor: "#111", width: 15, height: 15 }} />
+                  <span style={{ flex: 1, fontSize: 13, color: item.packed ? "#bbb" : "#222",
+                    textDecoration: item.packed ? "line-through" : "none" }}>{item.text}</span>
+                  <button onClick={() => onUpdate && onUpdate({ ...trip, packList: (trip.packList || []).filter(x => x.id !== item.id) })}
+                    style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <input value={newPackItem} onChange={e => setNewPackItem(e.target.value)}
+                  placeholder="e.g. Passport, sunscreen, hiking boots…"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newPackItem.trim()) {
+                      onUpdate && onUpdate({ ...trip, packList: [...(trip.packList || []), { id: "p_" + Date.now(), text: newPackItem.trim(), packed: false }] });
+                      setNewPackItem("");
+                    }
+                  }}
+                  style={{ flex: 1, background: "#fff", border: "1px solid #e8e8e8", borderRadius: 8,
+                    padding: "8px 12px", fontSize: 12, color: "#222", outline: "none" }} />
+                <button onClick={() => {
+                  if (!newPackItem.trim()) return;
+                  onUpdate && onUpdate({ ...trip, packList: [...(trip.packList || []), { id: "p_" + Date.now(), text: newPackItem.trim(), packed: false }] });
+                  setNewPackItem("");
+                }} style={{ background: "#111", border: "none", borderRadius: 8, padding: "8px 14px",
+                  color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>+ Add</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── TIMELINE ── */}
+          <div style={{ padding: "20px 20px 24px" }}>
+            {trip.plan.days.map((day, dayIdx) => {
+              const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
+              const dayEntries = day.entries || day.items || [];
+              const isLast = dayIdx === trip.plan.days.length - 1;
+              const dayDate = trip.startDate ? (() => {
+                const d = new Date(trip.startDate + "T12:00:00");
+                d.setDate(d.getDate() + dayIdx);
+                return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              })() : null;
+
+              return (
+                <div key={dayIdx} style={{ display: "flex", gap: 0, marginBottom: isLast ? 0 : 28 }}>
+                  {/* Timeline spine */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
+                    marginRight: 16, flexShrink: 0, width: 28 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: dayColor,
+                      color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800, flexShrink: 0, zIndex: 1, boxShadow: `0 0 0 3px ${dayColor}22` }}>
+                      {dayIdx + 1}
+                    </div>
+                    {!isLast && (
+                      <div style={{ width: 2, flex: 1, background: `${dayColor}30`, marginTop: 6, minHeight: 20, borderRadius: 1 }} />
+                    )}
+                  </div>
+
+                  {/* Day content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Day header row */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {editing ? (
+                          <input
+                            value={day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
+                            onChange={e => updateDayName(dayIdx, e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ fontSize: 14, fontWeight: 700, color: "#111", border: "1.5px solid #e0e0e0",
+                              borderRadius: 8, padding: "4px 10px", width: "100%", background: "#fafafa", outline: "none" }}
+                          />
+                        ) : (
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", lineHeight: 1.3 }}>
+                            {day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
+                          </div>
+                        )}
+                        {dayDate && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{dayDate}</div>}
+                      </div>
+                      <DayMapButton day={day} />
+                    </div>
+
+                    {/* Day notes */}
+                    {!past && onUpdate ? (
+                      <textarea value={day.notes || ""} onChange={e => updateDayNotes(dayIdx, e.target.value)}
+                        onClick={e => e.stopPropagation()} placeholder="Notes for this day…" rows={1}
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 12, color: "#666",
+                          border: "1.5px solid #f0f0f0", borderRadius: 8, padding: "6px 10px", marginBottom: 8,
+                          background: "#fafafa", resize: "none", outline: "none", lineHeight: 1.5 }} />
+                    ) : day.notes ? (
+                      <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8, fontStyle: "italic", lineHeight: 1.5 }}>
+                        {day.notes}
+                      </div>
+                    ) : null}
+
+                    {/* Place cards */}
+                    {dayEntries.map((e) => (
+                      <div key={e.id} onClick={ev => ev.stopPropagation()}
+                        style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "11px 13px",
+                          marginBottom: 6, background: e.visited ? "#fafafa" : "#fff",
+                          border: `1px solid ${e.visited ? "#f0f0f0" : "#efefef"}`,
+                          borderRadius: 14, opacity: e.visited ? 0.6 : 1, transition: "all 0.15s",
+                          boxShadow: e.visited ? "none" : "0 1px 3px rgba(0,0,0,0.04)" }}>
+
+                        {/* Type icon thumbnail */}
+                        <div style={{ width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+                          background: dayColor + "18", display: "flex", alignItems: "center",
+                          justifyContent: "center", fontSize: 20 }}>
+                          {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#111",
+                            textDecoration: e.visited ? "line-through" : "none", lineHeight: 1.3 }}>
+                            {e.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>
+                            {[e.cuisine || e.type, e.city].filter(Boolean).join(" · ")}
+                          </div>
+                          {e.verdict && (
+                            <div style={{ marginTop: 5 }}>
+                              <VerdictBadge verdict={e.verdict} />
+                            </div>
+                          )}
+                          {e.notes && (
+                            <div style={{ fontSize: 11, color: "#ccc", marginTop: 4, fontStyle: "italic" }}>{e.notes}</div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                          {/* Visit toggle */}
+                          {onUpdate && (
+                            <button onClick={() => toggleVisited(dayIdx, e.id)}
+                              title={e.visited ? "Mark unvisited" : "Mark visited"}
+                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                                border: `1.5px solid ${e.visited ? "#22c55e" : "#e0e0e0"}`,
+                                background: e.visited ? "#f0fdf4" : "transparent",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 13, color: e.visited ? "#22c55e" : "#d0d0d0", transition: "all 0.15s" }}>
+                              ✓
+                            </button>
+                          )}
+                          {/* Log to diary */}
+                          {onImportSingle && (
+                            <button onClick={() => onImportSingle(e)} title="Log to diary"
+                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                                border: "1.5px solid #e0e0e0", background: "transparent",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 13, color: "#ccc" }}>
+                              📍
+                            </button>
+                          )}
+                          {/* Remove */}
+                          {onUpdate && (
+                            <button onClick={() => removePlace(dayIdx, e.id)} title="Remove place"
+                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                                border: "1.5px solid #e0e0e0", background: "transparent",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 16, color: "#d0d0d0", lineHeight: 1 }}>
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add place input */}
+                    {!past && onUpdate && (
+                      <input placeholder="+ Add a place…" onClick={e => e.stopPropagation()}
+                        style={{ width: "100%", boxSizing: "border-box", background: "transparent",
+                          border: "1.5px dashed #e8e8e8", borderRadius: 12, padding: "9px 13px",
+                          fontSize: 12, color: "#bbb", outline: "none", cursor: "text", marginTop: 2 }}
+                        onFocus={e => e.target.style.borderColor = "#ccc"}
+                        onBlur={e => e.target.style.borderColor = "#e8e8e8"}
+                        onKeyDown={ev => {
+                          if (ev.key === "Enter") { addPlace(dayIdx, ev.target.value); ev.target.value = ""; }
+                        }} />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {editing && (
+              <button onClick={() => setEditing(false)}
+                style={{ width: "100%", background: "#111", border: "none", borderRadius: 12, padding: "11px",
+                  color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 12 }}>
+                Done Editing
+              </button>
+            )}
+          </div>
         </div>
+      )}
+
+      {/* ── OVERFLOW MENU (portal) ── */}
+      {showOverflowMenu && overflowMenuPos && createPortal(
+        <div onClick={e => e.stopPropagation()}
+          style={{ position: "absolute", top: overflowMenuPos.top, right: overflowMenuPos.right,
+            background: "#fff", borderRadius: 14, boxShadow: "0 8px 40px rgba(0,0,0,0.16)",
+            border: "1px solid #f0f0f0", minWidth: 215, zIndex: 9000, padding: "6px 0",
+            overflow: "hidden" }}>
+          <OMenuItem icon="🗺" label="Full Map View" onClick={() => { setShowOverflowMenu(false); setShowMapModal(true); setExpanded(true); }} />
+          {!past && onEdit && <OMenuItem icon="✏️" label="Edit Trip" onClick={() => { setShowOverflowMenu(false); onEdit(); }} />}
+          {!past && onInviteFriend && <OMenuItem icon="👥" label="Invite Friends" onClick={() => { setShowOverflowMenu(false); setShowInviteDropdown(true); setExpanded(true); }} />}
+          {past && onShare && <OMenuItem icon="🔗" label="Share Trip" onClick={() => { setShowOverflowMenu(false); setShowShareDropdown(true); setExpanded(true); }} />}
+          {onImportToLogs && <OMenuItem icon="📍" label="Import All to Logs" onClick={() => { setShowOverflowMenu(false); onImportToLogs(); }} />}
+          {past && onReactivate && <OMenuItem icon="↩" label="Move to Current" onClick={() => { setShowOverflowMenu(false); onReactivate(); }} />}
+
+          <div style={{ height: 1, background: "#f5f5f5", margin: "4px 0" }} />
+
+          {!past && onComplete && !confirmingComplete && (
+            <OMenuItem icon="✓" label="Mark as Done" onClick={() => setConfirmingComplete(true)} />
+          )}
+          {!past && onComplete && confirmingComplete && (
+            <div style={{ padding: "8px 16px" }}>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 8 }}>Move to Past Trips?</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => { onComplete(); setShowOverflowMenu(false); }}
+                  style={{ flex: 1, background: "#111", border: "none", borderRadius: 8, padding: "7px",
+                    color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Yes</button>
+                <button onClick={() => setConfirmingComplete(false)}
+                  style={{ flex: 1, background: "#f5f5f5", border: "none", borderRadius: 8, padding: "7px",
+                    color: "#555", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {!confirmingDelete ? (
+            <OMenuItem icon="🗑" label="Delete Trip" onClick={() => setConfirmingDelete(true)} danger />
+          ) : (
+            <div style={{ padding: "8px 16px" }}>
+              <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 8 }}>Delete this trip?</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => { onDelete(); setShowOverflowMenu(false); }}
+                  style={{ flex: 1, background: "#ef4444", border: "none", borderRadius: 8, padding: "7px",
+                    color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Delete</button>
+                <button onClick={() => setConfirmingDelete(false)}
+                  style={{ flex: 1, background: "#f5f5f5", border: "none", borderRadius: 8, padding: "7px",
+                    color: "#555", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* Map modal */}
+      {showMapModal && (
+        <TripMapModal trip={trip} onClose={() => setShowMapModal(false)} />
       )}
     </div>
   );
 }
-
 
 // ─── EXPLORE TAB COMPONENT ───────────────────────────────────────────────────
 function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
@@ -3068,21 +4379,17 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
   const [popularCategory, setPopularCategory] = useState("all");
   const [popularSearch, setPopularSearch] = useState("");
 
-  const allUsers = [...MOCK_USERS, ...MOCK_DISCOVER];
+  const allUsers = ALL_USERS;
   // Friends entries only (not current user u1)
   const networkEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity);
 
   const filteredNetwork = networkEntries.filter(e => {
     if (networkSearch.trim()) {
       const q = networkSearch.toLowerCase();
-      if (!e.name.toLowerCase().includes(q) &&
-          !e.city?.toLowerCase().includes(q) &&
-          !e.state?.toLowerCase().includes(q) &&
-          !e.cuisine?.toLowerCase().includes(q)) return false;
+      if (!entryMatchesSearch(e, q)) return false;
     }
     if (networkVerdict !== "all" && e.verdict !== networkVerdict) return false;
     if (networkCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
-    if (networkCategory === "hotels") return e.type === "hotel";
     if (networkCategory === "hiking") {
       const activity = MOCK_ACTIVITIES.find(a => a.name === e.name);
       return activity?.category === "hiking";
@@ -3168,7 +4475,6 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
           <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
             {catBtn("all", networkCategory, setNetworkCategory, "All")}
             {catBtn("food", networkCategory, setNetworkCategory, "🍽 Food")}
-            {catBtn("hotels", networkCategory, setNetworkCategory, "🏨 Hotels")}
             {catBtn("hiking", networkCategory, setNetworkCategory, "🥾 Hiking")}
             {catBtn("kids", networkCategory, setNetworkCategory, "👶 Kids")}
             {catBtn("activities", networkCategory, setNetworkCategory, "⛺ Activities")}
@@ -3208,7 +4514,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
                 const user = allUsers.find(u => u.id === e.userId);
                 return (
                   <div key={e.id} style={{ position: "relative" }}>
-                    <EntryCard entry={e} user={user} onViewProfile={onViewProfile} />
+                    <EntryCard entry={e} user={user ? {...user, onViewProfile} : user} />
                     {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
                       <div style={{ position: "absolute", bottom: 12, right: 12 }}>
                         <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
@@ -3303,8 +4609,188 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
   );
 }
 
+// ─── HOME TAB COMPONENT ──────────────────────────────────────────────────────
+function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGoToExplore, onGoToTrip }) {
+  const upcomingTrips = (savedTrips || []).filter(t => !t.completed).slice(0, 3);
+
+  // Friends' recent entries (last 4, excluding own)
+  const friendEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity).slice(-4).reverse();
+
+  const myEntries = entries.filter(e => e.userId === "u1");
+  const stats = [
+    { label: "Places Logged", value: myEntries.length },
+    { label: "Trips Planned", value: (savedTrips || []).filter(t => !t.completed).length },
+    { label: "Past Trips", value: (savedTrips || []).filter(t => t.completed).length },
+  ];
+
+  const verdictLabel = { must_go: "Must Go", liked: "Liked", meh: "Meh", avoid: "Avoid" };
+  const verdictColor = { must_go: "#000", liked: "#16a34a", meh: "#d97706", avoid: "#ef4444" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* Greeting */}
+      <div style={{ paddingTop: 4 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#000" }}>
+          Hey, {currentUser.name.split(" ")[0]} {currentUser.avatar}
+        </div>
+        <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>Here's what's going on</div>
+      </div>
+
+      {/* ── Upcoming Trips ── */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em" }}>Upcoming Trips</div>
+          <button onClick={onGoToTrips} style={{ background: "none", border: "none", fontSize: 12, color: "#888", cursor: "pointer", padding: 0 }}>See all →</button>
+        </div>
+        {upcomingTrips.length === 0 ? (
+          <div style={{ background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14, padding: "28px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🗺</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#555" }}>No trips planned</div>
+            <button onClick={onGoToTrips} style={{ marginTop: 10, background: "#000", border: "none", borderRadius: 8, padding: "8px 18px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              + Plan a Trip
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {upcomingTrips.map((trip, i) => {
+              let daysAway = null;
+              if (trip.startDate) {
+                const diff = Math.ceil((new Date(trip.startDate + "T12:00:00") - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24));
+                daysAway = diff;
+              }
+              const isHero = i === 0;
+              const hasPackList = (trip.packList || []).length > 0;
+              const hasReminders = (trip.reminders || []).length > 0;
+              const showStrip = hasPackList || hasReminders;
+              return (
+                <div key={trip.id} onClick={onGoToTrips} style={{
+                  background: isHero ? "#000" : "#fff",
+                  border: `1px solid ${isHero ? "#000" : "#efefef"}`,
+                  borderRadius: 14, cursor: "pointer",
+                  boxShadow: isHero ? "0 4px 16px rgba(0,0,0,0.15)" : "0 1px 3px rgba(0,0,0,0.05)",
+                  overflow: "hidden"
+                }}>
+                  {/* Top row */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: isHero ? "#fff" : "#000" }}>🗺 {trip.destination}</div>
+                      <div style={{ fontSize: 12, color: isHero ? "rgba(255,255,255,0.65)" : "#888", marginTop: 4 }}>
+                        {trip.days} days
+                        {trip.startDate ? ` · ${new Date(trip.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                        {trip.invitedFriends?.length > 0 ? ` · ${trip.invitedFriends.length} going` : ""}
+                      </div>
+                    </div>
+                    {daysAway !== null && (
+                      <div style={{ textAlign: "center", flexShrink: 0 }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: isHero ? "#fff" : "#000", lineHeight: 1 }}>
+                          {daysAway <= 0 ? "🛫" : daysAway}
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em",
+                          color: isHero ? "rgba(255,255,255,0.55)" : "#aaa", marginTop: 2 }}>
+                          {daysAway <= 0 ? "today!" : daysAway === 1 ? "day away" : "days away"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Bottom strip */}
+                  {showStrip && (
+                    <div style={{
+                      borderTop: `1px solid ${isHero ? "rgba(255,255,255,0.1)" : "#f0f0f0"}`,
+                      display: "flex"
+                    }}>
+                      {hasPackList && (
+                        <button onClick={e => { e.stopPropagation(); onGoToTrip && onGoToTrip(trip.id, "packList"); }}
+                          style={{
+                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            padding: "10px 14px", background: "none", border: "none", cursor: "pointer",
+                            borderRight: hasReminders ? `1px solid ${isHero ? "rgba(255,255,255,0.1)" : "#f0f0f0"}` : "none"
+                          }}>
+                          <span style={{ fontSize: 13 }}>🎒</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: isHero ? "rgba(255,255,255,0.9)" : "#333" }}>
+                            {(trip.packList||[]).filter(x => x.packed).length}/{(trip.packList||[]).length} packed
+                          </span>
+                        </button>
+                      )}
+                      {hasReminders && (
+                        <button onClick={e => { e.stopPropagation(); onGoToTrip && onGoToTrip(trip.id, "bookRemind"); }}
+                          style={{
+                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            padding: "10px 14px", background: "none", border: "none", cursor: "pointer"
+                          }}>
+                          <span style={{ fontSize: 13 }}>📋</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: isHero ? "rgba(255,255,255,0.9)" : "#333" }}>
+                            {(trip.reminders||[]).length} to book
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Friends Activity ── */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em" }}>Friends Activity</div>
+          <button onClick={onGoToExplore} style={{ background: "none", border: "none", fontSize: 12, color: "#888", cursor: "pointer", padding: 0 }}>See all →</button>
+        </div>
+        {friendEntries.length === 0 ? (
+          <div style={{ background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14, padding: "24px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
+            <div style={{ fontSize: 13, color: "#888" }}>No recent activity from friends</div>
+          </div>
+        ) : (
+          <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            {friendEntries.map((e, i) => {
+              const user = allUsers.find(u => u.id === e.userId);
+              return (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+                  borderBottom: i < friendEntries.length - 1 ? "1px solid #f5f5f5" : "none" }}>
+                  <div style={{ width: 36, height: 36, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                    {user?.avatar}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</div>
+                    <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{user?.name?.split(" ")[0]} · {e.city}</div>
+                  </div>
+                  {e.verdict && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: verdictColor[e.verdict], background: verdictColor[e.verdict] + "15",
+                      borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                      {verdictLabel[e.verdict]}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Quick Snapshot ── */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Quick Snapshot</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          {stats.map(s => (
+            <div key={s.label} style={{ flex: 1, background: "#fff", border: "1px solid #efefef", borderRadius: 14,
+              padding: "16px 12px", textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#000" }}>{s.value}</div>
+              <div style={{ fontSize: 10, color: "#888", marginTop: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ─── MY LOGS TAB COMPONENT ───────────────────────────────────────────────────
-function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEntry, showImport, setShowImport }) {
+function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEntry, showImport, setShowImport, onEditProfile }) {
   const [logsCategory, setLogsCategory] = useState("all");
   const [logsSearch, setLogsSearch] = useState("");
   const [importResult, setImportResult] = useState(null);
@@ -3339,13 +4825,9 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
   const filteredLogs = myEntries.filter(e => {
     if (logsSearch.trim()) {
       const q = logsSearch.toLowerCase();
-      if (!e.name.toLowerCase().includes(q) &&
-          !e.city?.toLowerCase().includes(q) &&
-          !e.state?.toLowerCase().includes(q) &&
-          !(e.cuisine || "").toLowerCase().includes(q)) return false;
+      if (!entryMatchesSearch(e, q)) return false;
     }
     if (logsCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
-    if (logsCategory === "hotels") return e.type === "hotel";
     if (logsCategory === "hiking") return e.type === "hiking";
     if (logsCategory === "kids") return e.type === "kids";
     if (logsCategory === "activities") return e.type === "scenic" || e.type === "outdoor";
@@ -3368,13 +4850,21 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
       {/* Profile card */}
       <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, padding: "16px 18px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 44, height: 44, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-            {currentUser.avatar}
+          <div style={{ width: 52, height: 52, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, overflow: "hidden", flexShrink: 0 }}>
+            {currentUser.avatarImg
+              ? <img src={currentUser.avatarImg} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : currentUser.avatar}
           </div>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#000" }}>{currentUser.name}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#000" }}>{currentUser.name}</div>
             <div style={{ fontSize: 12, color: "#888" }}>@{currentUser.username}</div>
+            {currentUser.bio && <div style={{ fontSize: 12, color: "#555", marginTop: 3 }}>{currentUser.bio}</div>}
           </div>
+          <button onClick={onEditProfile}
+            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 12px",
+              fontSize: 11, color: "#555", cursor: "pointer", flexShrink: 0 }}>
+            ✏️ Edit Profile
+          </button>
         </div>
         <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
           {[["Logs", myEntries.length],["Must Go", myEntries.filter(e=>e.verdict==="must_go").length],["Cities", new Set(myEntries.map(e=>e.city)).size],["Trips", savedTrips.length]].map(([l,v]) => (
@@ -3445,7 +4935,6 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
         {catBtn("all", "All")}
         {catBtn("food", "🍽 Food")}
-        {catBtn("hotels", "🏨 Hotels")}
         {catBtn("hiking", "🥾 Hiking")}
         {catBtn("kids", "👶 Kids")}
         {catBtn("activities", "⛺ Activities")}
@@ -3459,33 +4948,10 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
       {/* Entries */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filteredLogs.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "48px 24px" }}>
-            {logsSearch ? (
-              <>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "#000", marginBottom: 6 }}>No results found</div>
-                <div style={{ fontSize: 13, color: "#aaa" }}>Try a different search term</div>
-              </>
-            ) : logsCategory !== "all" ? (
-              <>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>{{ food:"🍽", hotels:"🏨", hiking:"🥾", kids:"👶", activities:"⛺" }[logsCategory] || "📍"}</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "#000", marginBottom: 6 }}>No {logsCategory} logged yet</div>
-                <div style={{ fontSize: 13, color: "#aaa" }}>Tap + Log to add your first one</div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>🗺</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#000", marginBottom: 8 }}>Your travel story starts here</div>
-                <div style={{ fontSize: 14, color: "#888", marginBottom: 24, lineHeight: 1.6 }}>
-                  Log restaurants, hikes, hotels and more.<br/>Build your personal travel guide.
-                </div>
-                <button onClick={() => setShowAddModal(true)}
-                  style={{ background: "#000", border: "none", borderRadius: 12, padding: "14px 28px",
-                    color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                  + Log Your First Place
-                </button>
-              </>
-            )}
+          <div style={{ textAlign: "center", padding: "52px 20px", color: "#aaa", background: "#fafafa", borderRadius: 16, border: "1px dashed #e8e8e8" }}>
+            <div style={{ fontSize: 44, marginBottom: 12, filter: "grayscale(0.2)" }}>📍</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 4 }}>{logsSearch ? "No results found" : "Nothing logged yet"}</div>
+            {!logsSearch && <div style={{ fontSize: 13, color: "#aaa" }}>Tap <strong>+ Log</strong> to start building your food diary</div>}
           </div>
         ) : (
           <>
@@ -3494,11 +4960,13 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
                 <ActivityCard key={e.id} activity={e} isPrivate={e.isPrivate}
                   onEdit={() => setEditingEntry(e)}
                   onTogglePrivate={() => setEntries(prev => prev.map(en => en.id === e.id ? {...en, isPrivate: !en.isPrivate} : en))}
+                  onAddPhoto={dataUrl => setEntries(prev => prev.map(en => en.id === e.id ? {...en, photos: [...(en.photos||[]), dataUrl]} : en))}
                 />
               ) : (
                 <EntryCard key={e.id} entry={e} isPrivate={e.isPrivate}
                   onEdit={() => setEditingEntry(e)}
                   onTogglePrivate={() => setEntries(prev => prev.map(en => en.id === e.id ? {...en, isPrivate: !en.isPrivate} : en))}
+                  onAddPhoto={dataUrl => setEntries(prev => prev.map(en => en.id === e.id ? {...en, photos: [...(en.photos||[]), dataUrl]} : en))}
                 />
               )
             ))}
@@ -3510,9 +4978,99 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
 }
 
 
+// ─── EDIT PROFILE MODAL ──────────────────────────────────────────────────────
+function EditProfileModal({ user, onClose, onSave }) {
+  const [name, setName] = useState(user.name);
+  const [username, setUsername] = useState(user.username);
+  const [bio, setBio] = useState(user.bio || "");
+  const [avatar, setAvatar] = useState(user.avatar);
+  const [avatarImg, setAvatarImg] = useState(user.avatarImg || null);
+
+  const handlePhoto = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type) || file.size > MAX_PHOTO_SIZE) return;
+    const reader = new FileReader();
+    reader.onload = ev => { setAvatarImg(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const inputStyle = { width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+    padding: "10px 12px", fontSize: 14, color: "#000", outline: "none", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: "#888", letterSpacing: "0.06em",
+    textTransform: "uppercase", display: "block", marginBottom: 6 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)",
+      zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px",
+        width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto",
+        animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Edit Profile</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "#888", cursor: "pointer" }}>×</button>
+        </div>
+
+        {/* Avatar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#f0f0f0", display: "flex",
+            alignItems: "center", justifyContent: "center", fontSize: 30, overflow: "hidden", flexShrink: 0,
+            border: "2px solid #efefef" }}>
+            {avatarImg
+              ? <img src={avatarImg} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : avatar}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#f8f8f8",
+              border: "1px dashed #ddd", borderRadius: 8, padding: "7px 14px", fontSize: 12, color: "#555", cursor: "pointer" }}>
+              📷 Upload Photo
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
+            </label>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input value={avatar} onChange={e => { setAvatar(e.target.value); setAvatarImg(null); }}
+                placeholder="or type emoji"
+                style={{ ...inputStyle, padding: "6px 10px", fontSize: 20, width: 60, textAlign: "center" }} />
+              <span style={{ fontSize: 11, color: "#aaa" }}>or emoji</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Username</label>
+            <input value={username} onChange={e => setUsername(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Bio</label>
+            <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }} />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+          <button onClick={() => onSave({ ...user, name, username, bio, avatar, avatarImg })}
+            style={{ flex: 1, background: "#000", border: "none", borderRadius: 10, padding: "12px",
+              color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            Save Changes
+          </button>
+          <button onClick={onClose}
+            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "12px 20px",
+              fontSize: 14, color: "#555", cursor: "pointer" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function MainApp({ user, onLogout }) {
-  const [tab, setTab] = useState("mine");
+  const [tab, setTab] = useState("home");
   const [showNetwork, setShowNetwork] = useState(false);
   const [entries, setEntries] = useState([
     ...MOCK_ENTRIES,
@@ -3529,6 +5087,7 @@ function MainApp({ user, onLogout }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [prefillEntry, setPrefillEntry] = useState(null);
   const [showTripModal, setShowTripModal] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null);
   const [viewProfile, setViewProfile] = useState(null);
   // u2, u3, u7, u8 are confirmed friends; u4,u5,u6 are discoverable
   const [friendState, setFriendState] = useState({ u2: "friend", u3: "friend", u7: "friend", u8: "friend" });
@@ -3537,11 +5096,6 @@ function MainApp({ user, onLogout }) {
 
   const [editingEntry, setEditingEntry] = useState(null);
   const [showImport, setShowImport] = useState(false);
-  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
-  const [globalSearch, setGlobalSearch] = useState("");
-  const [showEditProfile, setShowEditProfile] = useState(false);
-  const [localUser, setLocalUser] = useState({ ...user });
-  const [profileForm, setProfileForm] = useState({ name: user.name, username: user.username, bio: user.bio || "" });
   const [importToLogsMsg, setImportToLogsMsg] = useState("");
   const [sharedTrips, setSharedTrips] = useState([
     {
@@ -3559,14 +5113,26 @@ function MainApp({ user, onLogout }) {
     }
   ]); // trips shared by friends
   const [savedTrips, setSavedTrips] = useState([]);
-
-  const currentUser = MOCK_USERS[0];
+  const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [focusTripSection, setFocusTripSection] = useState(null); // { tripId, section }
 
   if (viewProfile) {
-    const profileUser = [...MOCK_USERS, ...MOCK_DISCOVER].find(u => u.id === viewProfile) || MOCK_USERS[1];
+    const user = ALL_USERS.find(u => u.id === viewProfile);
+    if (!user) return null;
     return (
-      <div style={{ minHeight: "100vh", background: "#fff", padding: "20px 16px", maxWidth: 600, margin: "0 auto" }}>
-        <ProfileView user={profileUser} entries={entries} onBack={() => setViewProfile(null)} savedTrips={savedTrips} onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => { if (t.id !== tripId) return t; const updatedDays = t.plan?.days ? [...t.plan.days] : []; if (updatedDays.length === 0) updatedDays.push({ day: 1, city: t.destination, entries: [], activity: "" }); updatedDays[0] = { ...updatedDays[0], entries: [...updatedDays[0].entries, entry] }; return { ...t, plan: { ...t.plan, days: updatedDays } }; }))} />
+      <div style={{ minHeight: "100vh", background: "#fafafa", padding: "20px 16px", maxWidth: 600, margin: "0 auto" }}>
+        <style>{``}</style>
+        <ProfileView user={user} entries={entries} onBack={() => setViewProfile(null)}
+          savedTrips={savedTrips}
+          onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => {
+            if (t.id !== tripId) return t;
+            const updatedDays = t.plan?.days ? [...t.plan.days] : [];
+            if (updatedDays.length === 0) updatedDays.push({ day: 1, city: t.destination, entries: [], activity: "" });
+            updatedDays[0] = { ...updatedDays[0], entries: [...updatedDays[0].entries, entry] };
+            return { ...t, plan: { ...t.plan, days: updatedDays } };
+          }))}
+        />
       </div>
     );
   }
@@ -3574,18 +5140,21 @@ function MainApp({ user, onLogout }) {
   return (
     <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000" }}>
       <style>{`
-        
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #0a0a0a; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        input:focus, textarea:focus { border-color: #000 !important; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #f0f0f0; } ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        input:focus, textarea:focus { border-color: #000 !important; outline: none; }
+        button { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        button:active { opacity: 0.75; transform: scale(0.97); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #efefef", padding: "14px 20px", position: "sticky", top: 0, zIndex: 50 }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #efefef", padding: "13px 20px", position: "sticky", top: 0, zIndex: 50, boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
         <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000", fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1 }}>Travel Slate</div>
+            <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000", fontSize: 21, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1 }}>Travel Slate</div>
+            <div style={{ fontSize: 10, color: "#bbb", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 2 }}>Your food & travel diary</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button onClick={() => setShowAddModal(true)}
@@ -3593,19 +5162,10 @@ function MainApp({ user, onLogout }) {
                 color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
               + Log
             </button>
-            <button onClick={() => setShowGlobalSearch(!showGlobalSearch)}
-              style={{ background: "none", border: "1px solid #efefef", borderRadius: 8, padding: "8px 10px",
-                color: "#555", fontSize: 12, cursor: "pointer" }}>
-              🔍
-            </button>
-            <button onClick={() => setShowEditProfile(true)}
-              style={{ background: "none", border: "1px solid #efefef", borderRadius: "50%", width: 36, height: 36,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-              {localUser.avatar || "👤"}
-            </button>
             <button onClick={() => setShowNetwork(true)}
-              style={{ background: "none", border: "1px solid #efefef", borderRadius: 8, padding: "8px 10px",
-                color: "#555", fontSize: 12, cursor: "pointer" }}>
+              style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 8, padding: "8px 10px",
+                color: "#555", fontSize: 12, cursor: "pointer" }}
+              title="Network">
               👥
             </button>
             <button onClick={onLogout}
@@ -3618,22 +5178,36 @@ function MainApp({ user, onLogout }) {
       </div>
 
       {/* Nav */}
-      <div style={{ borderBottom: "1px solid #efefef", background: "#fff", position: "sticky", top: 57, zIndex: 40 }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", display: "flex" }}>
-          {[["mine","My Logs"],["explore","Explore"],["trips","My Trips"]].map(([id, label]) => (
+      <div style={{ borderBottom: "1px solid #efefef", background: "#fff", position: "sticky", top: 57, zIndex: 40, padding: "8px 16px 0" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", gap: 4 }}>
+          {[["home","🏠 Home"],["explore","🔍 Explore"],["trips","✈️ Trips"],["mine","📍 My Logs"]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
-              style={{ flex: 1, background: "none", border: "none", borderBottom: `2px solid ${tab === id ? "#000" : "transparent"}`,
-                color: tab === id ? "#000" : "#888", padding: "14px 0", cursor: "pointer",
-                fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", transition: "all 0.2s",
-                position: "relative" }}>
+              style={{ flex: 1, border: "none", borderRadius: "10px 10px 0 0",
+                background: tab === id ? "#000" : "transparent",
+                color: tab === id ? "#fff" : "#888", padding: "10px 0 12px", cursor: "pointer",
+                fontSize: 11, fontWeight: tab === id ? 600 : 400,
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                transition: "all 0.2s", letterSpacing: tab === id ? "0.01em" : "normal" }}>
               {label}
-
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 80px" }}>
+
+        {/* HOME TAB */}
+        {tab === "home" && (
+          <HomeTab
+            currentUser={currentUser}
+            savedTrips={savedTrips}
+            entries={entries}
+            allUsers={ALL_USERS}
+            onGoToTrips={() => setTab("trips")}
+            onGoToExplore={() => setTab("explore")}
+            onGoToTrip={(tripId, section) => { setFocusTripSection({ tripId, section }); setTab("trips"); }}
+          />
+        )}
 
         {/* EXPLORE TAB */}
         {tab === "explore" && (
@@ -3655,12 +5229,13 @@ function MainApp({ user, onLogout }) {
         {tab === "mine" && (
           <MyLogsTab
             entries={entries}
-            currentUser={localUser}
+            currentUser={currentUser}
             savedTrips={savedTrips}
             setEntries={setEntries}
             setEditingEntry={setEditingEntry}
             showImport={showImport}
             setShowImport={setShowImport}
+            onEditProfile={() => setShowEditProfile(true)}
           />
         )}
 
@@ -3691,10 +5266,10 @@ function MainApp({ user, onLogout }) {
                 Planning
               </div>
               {savedTrips.filter(t => !t.completed).length === 0 ? (
-                <div style={{ background: "#f8f8f8", borderRadius: 12, padding: "32px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>✈️</div>
-                  <div style={{ fontSize: 14, color: "#888" }}>No trips in planning yet</div>
-                  <div style={{ fontSize: 13, color: "#aaa", marginTop: 4 }}>Tap + Plan Trip to get started</div>
+                <div style={{ background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 16, padding: "48px 20px", textAlign: "center" }}>
+                  <div style={{ fontSize: 44, marginBottom: 12 }}>✈️</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 4 }}>No trips planned yet</div>
+                  <div style={{ fontSize: 13, color: "#aaa" }}>Tap <strong>+ Plan Trip</strong> to start your next adventure</div>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3705,42 +5280,31 @@ function MainApp({ user, onLogout }) {
                       onInviteFriend={uid => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, invitedFriends: (t.invitedFriends||[]).includes(uid) ? (t.invitedFriends||[]).filter(x=>x!==uid) : [...(t.invitedFriends||[]), uid]} : t))}
                       onAddPlaces={() => setShowTripModal(true)}
                       onUpdate={updated => setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t))}
-                      onShare={(uid, uname) => {
-                        setSavedTrips(prev => prev.map(t => t.id === trip.id ? {
-                          ...t,
-                          sharedWithList: [...new Set([...(t.sharedWithList || []), uid])]
-                        } : t));
-                        setImportToLogsMsg("✓ Trip shared with " + (uname || "friend") + "!");
-                        setTimeout(() => setImportToLogsMsg(""), 3000);
+                      onEdit={() => setEditingTrip(trip)}
+                      focusSection={focusTripSection?.tripId === trip.id ? focusTripSection.section : null}
+                      onFocusHandled={() => setFocusTripSection(null)}
+                      onShare={userId => {
+                        const friend = ALL_USERS.find(u => u.id === userId);
+                        let wasShared = false;
+                        setSavedTrips(prev => prev.map(t => {
+                          if (t.id !== trip.id) return t;
+                          wasShared = (t.sharedWith || []).includes(userId);
+                          return { ...t, sharedWith: wasShared ? (t.sharedWith || []).filter(x => x !== userId) : [...new Set([...(t.sharedWith || []), userId])] };
+                        }));
+                        if (!wasShared) {
+                          setSharedTrips(prev => {
+                            const already = prev.find(t => t.id === trip.id && t.sharedBy === "u1");
+                            if (already) return prev;
+                            return [{ ...trip, sharedBy: "u1", sharedAt: new Date().toLocaleDateString() }, ...prev];
+                          });
+                          setImportToLogsMsg(`✓ Trip shared with ${friend?.name || "friend"}!`);
+                          setTimeout(() => setImportToLogsMsg(""), 3000);
+                        }
                       }}
-                      onImportToLogs={() => {
-                        const days = trip.plan?.days || [];
-                        const tripEntries = days.flatMap(d => {
-                          const items = d.entries || d.items || [];
-                          return items.map((e, j) => ({
-                            ...e,
-                            id: "imp_" + (e.id || j) + "_" + Date.now(),
-                            userId: "u1",
-                            verdict: e.verdict || "must_go",
-                            rating: e.rating || 0,
-                            notes: e.notes || e.note || "",
-                            tags: e.tags || [],
-                            photos: [],
-                            type: e.type || "activity",
-                            city: e.city || trip.destination || "",
-                            country: e.country || "USA"
-                          }));
-                        }).filter(e => e.name && e.name.trim());
-                        setImportToLogsMsg("✓ Imported " + tripEntries.length + " place" + (tripEntries.length !== 1 ? "s" : "") + " to My Logs!");
-                        setTimeout(() => setImportToLogsMsg(""), 3000);
-                        setEntries(prev => [...tripEntries, ...prev]);
-                      }}
-                      onImportSingle={entry => {
-                        setPrefillEntry(entry);
-                        setShowAddModal(true);
-                      }}
+                      onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
+                      onImportSingle={entry => setPrefillEntry(entry)}
                       friendState={friendState}
-                      allUsers={[...MOCK_USERS, ...MOCK_DISCOVER]}
+                      allUsers={ALL_USERS}
                     />
                   ))}
                 </div>
@@ -3755,14 +5319,10 @@ function MainApp({ user, onLogout }) {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {sharedTrips.filter(t => t.sharedBy !== "u1").map(trip => {
-                    const sharer = [...MOCK_USERS, ...MOCK_DISCOVER].find(u => u.id === trip.sharedBy);
+                    const sharer = ALL_USERS.find(u => u.id === trip.sharedBy);
                     return (
                       <SharedTripCard key={trip.id} trip={trip} sharer={sharer}
-                        onImportToLogs={(entry) => {
-                          setEntries(prev => [{ ...entry, id: "imp_" + Date.now(), userId: "u1" }, ...prev]);
-                          setImportToLogsMsg("✓ Added " + entry.name + " to My Logs!");
-                          setTimeout(() => setImportToLogsMsg(""), 2500);
-                        }}
+                        onImportToLogs={entry => setPrefillEntry(entry)}
                       />
                     );
                   })}
@@ -3781,42 +5341,29 @@ function MainApp({ user, onLogout }) {
                     <TripCard key={trip.id} trip={trip} entries={entries}
                       onDelete={() => setSavedTrips(prev => prev.filter(t => t.id !== trip.id))}
                       past
-                      onImportToLogs={() => {
-                        const days = trip.plan?.days || [];
-                        const tripEntries = days.flatMap(d => {
-                          const items = d.entries || d.items || [];
-                          return items.map((e, j) => ({
-                            ...e,
-                            id: "imp_" + (e.id || j) + "_" + Date.now(),
-                            userId: "u1",
-                            verdict: e.verdict || "must_go",
-                            rating: e.rating || 0,
-                            notes: e.notes || e.note || "",
-                            tags: e.tags || [],
-                            photos: [],
-                            type: e.type || "activity",
-                            city: e.city || trip.destination || "",
-                            country: e.country || "USA"
-                          }));
-                        }).filter(e => e.name && e.name.trim());
-                        setImportToLogsMsg("✓ Imported " + tripEntries.length + " place" + (tripEntries.length !== 1 ? "s" : "") + " to My Logs!");
-                        setTimeout(() => setImportToLogsMsg(""), 3000);
-                        setEntries(prev => [...tripEntries, ...prev]);
-                      }}
-                      onImportSingle={entry => {
-                        setPrefillEntry(entry);
-                        setShowAddModal(true);
-                      }}
-                      onShare={(uid, uname) => {
-                        setSavedTrips(prev => prev.map(t => t.id === trip.id ? {
-                          ...t,
-                          sharedWithList: [...new Set([...(t.sharedWithList || []), uid])]
-                        } : t));
-                        setImportToLogsMsg("✓ Trip shared with " + (uname || "friend") + "!");
-                        setTimeout(() => setImportToLogsMsg(""), 3000);
+                      onReactivate={() => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: false} : t))}
+                      onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
+                      onImportSingle={entry => setPrefillEntry(entry)}
+                      onShare={userId => {
+                        const friend = ALL_USERS.find(u => u.id === userId);
+                        let wasShared = false;
+                        setSavedTrips(prev => prev.map(t => {
+                          if (t.id !== trip.id) return t;
+                          wasShared = (t.sharedWith || []).includes(userId);
+                          return { ...t, sharedWith: wasShared ? (t.sharedWith || []).filter(x => x !== userId) : [...new Set([...(t.sharedWith || []), userId])] };
+                        }));
+                        if (!wasShared) {
+                          setSharedTrips(prev => {
+                            const already = prev.find(t => t.id === trip.id && t.sharedBy === "u1");
+                            if (already) return prev;
+                            return [{ ...trip, sharedBy: "u1", sharedAt: new Date().toLocaleDateString() }, ...prev];
+                          });
+                          setImportToLogsMsg(`✓ Trip shared with ${friend?.name || "friend"}!`);
+                          setTimeout(() => setImportToLogsMsg(""), 3000);
+                        }
                       }}
                       friendState={friendState}
-                      allUsers={[...MOCK_USERS, ...MOCK_DISCOVER]}
+                      allUsers={ALL_USERS}
                     />
                   ))}
                 </div>
@@ -3826,42 +5373,9 @@ function MainApp({ user, onLogout }) {
         )}
       </div>
 
-      {showEditProfile && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Edit Profile</h2>
-              <button onClick={() => setShowEditProfile(false)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#aaa" }}>×</button>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Full Name</label>
-              <input value={profileForm.name} onChange={e => setProfileForm(f => ({...f, name: e.target.value}))}
-                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "11px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Username</label>
-              <input value={profileForm.username} onChange={e => setProfileForm(f => ({...f, username: e.target.value}))}
-                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "11px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Bio</label>
-              <textarea value={profileForm.bio} onChange={e => setProfileForm(f => ({...f, bio: e.target.value}))}
-                placeholder="Tell us about your travel style..."
-                rows={3}
-                style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "11px 12px", fontSize: 14, outline: "none", resize: "none", boxSizing: "border-box" }} />
-            </div>
-            <button onClick={() => {
-                setLocalUser(u => ({ ...u, name: profileForm.name, username: profileForm.username, bio: profileForm.bio }));
-                setShowEditProfile(false);
-              }}
-              style={{ width: "100%", background: "#000", border: "none", borderRadius: 8, padding: 13, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-              Save Changes
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showAddModal && <AddEntryModal key={Date.now()} onClose={() => { setShowAddModal(false); setPrefillEntry(null); }} onSave={e => setEntries(prev => [e, ...prev])} entries={entries} prefill={prefillEntry} />}
+      {showEditProfile && <EditProfileModal user={currentUser} onClose={() => setShowEditProfile(false)} onSave={updated => { setCurrentUser(updated); setShowEditProfile(false); }} />}
+      {showAddModal && <AddEntryModal key="add-entry-modal" onClose={() => setShowAddModal(false)} onSave={e => setEntries(prev => [e, ...prev])} entries={entries} />}
+      {prefillEntry && <AddEntryModal key={prefillEntry.id || "prefill"} prefill={prefillEntry} onClose={() => setPrefillEntry(null)} onSave={e => { setEntries(prev => [e, ...prev]); setPrefillEntry(null); }} entries={entries} />}
       {editingEntry && <EditEntryModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updated => {
         setEntries(prev => prev.map(e => e.id === updated.id ? updated : e));
         setEditingEntry(null);
@@ -3887,7 +5401,12 @@ function MainApp({ user, onLogout }) {
           </div>
         </div>
       )}
-      {showTripModal && <TripPlannerModal entries={entries} onClose={() => setShowTripModal(false)} savedTrips={savedTrips} onSaveTrip={trip => setSavedTrips(prev => { const exists = prev.find(t => t.id === trip.id); return exists ? prev.map(t => t.id === trip.id ? trip : t) : [trip, ...prev]; })} onUpdateTrip={updated => setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t))} />}
+      {(showTripModal || editingTrip) && <TripPlannerModal entries={entries}
+        onClose={() => { setShowTripModal(false); setEditingTrip(null); }}
+        savedTrips={savedTrips}
+        editTrip={editingTrip || null}
+        onSaveTrip={trip => setSavedTrips(prev => [trip, ...prev])}
+        onUpdateTrip={updated => { setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t)); setEditingTrip(null); }} />}
       
     </div>
   );
@@ -4036,7 +5555,7 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
             <button key={id} onClick={() => { setMode(id); setError(""); }}
               style={{ flex: 1, background: mode === id ? "#000" : "transparent",
                 border: "none", borderRadius: 6, padding: "10px", cursor: "pointer",
-                color: mode === id ? "#fff" : "#888",
+                color: mode === id ? "#fff" : "#555",
                 fontSize: 13, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: mode === id ? 700 : 400,
                 transition: "all 0.2s" }}>
               {label}
@@ -4093,90 +5612,9 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
 }
 
 // ─── ROOT APP (AUTH GATE) ───────────────────────────────────────────────────
-
-// ─── ONBOARDING SCREEN ───────────────────────────────────────────────────────
-function OnboardingScreen({ onDone }) {
-  const [step, setStep] = useState(0);
-  const steps = [
-    {
-      emoji: "🗺",
-      title: "Your Private Travel Intel",
-      desc: "Log every place you visit — restaurants, hikes, hotels, activities. Build your personal travel guide."
-    },
-    {
-      emoji: "🍽",
-      title: "Log What You Love",
-      desc: "Rate places, add notes, mark Must Go or Skip. Your honest takes, no sponsored content ever."
-    },
-    {
-      emoji: "👥",
-      title: "Trust Your Network",
-      desc: "See where your friends have been. Get real recommendations from people you actually trust."
-    },
-    {
-      emoji: "✈️",
-      title: "Plan Better Trips",
-      desc: "Build itineraries from your network's picks and your own saved ideas. Open in Google Maps with one tap."
-    }
-  ];
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center", padding: 32, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        {/* Progress dots */}
-        <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 48 }}>
-          {steps.map((_, i) => (
-            <div key={i} style={{ width: i === step ? 20 : 6, height: 6, borderRadius: 3,
-              background: i === step ? "#000" : "#e0e0e0", transition: "all 0.3s" }} />
-          ))}
-        </div>
-
-        {/* Content */}
-        <div style={{ textAlign: "center", marginBottom: 48 }}>
-          <div style={{ fontSize: 72, marginBottom: 24 }}>{steps[step].emoji}</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#000", marginBottom: 16, lineHeight: 1.2 }}>
-            {steps[step].title}
-          </div>
-          <div style={{ fontSize: 16, color: "#888", lineHeight: 1.7 }}>
-            {steps[step].desc}
-          </div>
-        </div>
-
-        {/* Buttons */}
-        {step < steps.length - 1 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button onClick={() => setStep(step + 1)}
-              style={{ width: "100%", background: "#000", border: "none", borderRadius: 12,
-                padding: "16px", color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-              Next →
-            </button>
-            <button onClick={onDone}
-              style={{ width: "100%", background: "transparent", border: "none",
-                color: "#aaa", fontSize: 14, cursor: "pointer" }}>
-              Skip
-            </button>
-          </div>
-        ) : (
-          <button onClick={onDone}
-            style={{ width: "100%", background: "#000", border: "none", borderRadius: 12,
-              padding: "16px", color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-            Get Started 🗺
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
-  const [screen, setScreen] = useState("landing"); // landing | auth-signup | auth-login | app | onboarding
-  const [hasOnboarded, setHasOnboarded] = useState(false);
-
-  if (screen === "onboarding") {
-    return <OnboardingScreen onDone={() => { setHasOnboarded(true); setScreen("app"); }} />;
-  }
+  const [screen, setScreen] = useState("landing"); // landing | auth-signup | auth-login | app
 
   if (authUser && screen === "app") {
     return <MainApp user={authUser} onLogout={() => { setAuthUser(null); setScreen("landing"); }} />;
@@ -4186,7 +5624,7 @@ export default function App() {
     return (
       <AuthScreen
         mode={screen === "auth-signup" ? "signup" : "login"}
-        onAuth={(user) => { setAuthUser(user); if (!hasOnboarded) { setScreen("onboarding"); } else { setScreen("app"); } }}
+        onAuth={(user) => { setAuthUser(user); setScreen("app"); }}
         onBack={() => setScreen("landing")}
       />
     );
