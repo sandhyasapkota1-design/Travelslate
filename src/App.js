@@ -1322,7 +1322,7 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
 }
 
 // ─── TRIP PLANNER MODAL ──────────────────────────────────────────────────────
-const HARDCODED_API_KEY = ""; // ← local dev only, never commit
+const HARDCODED_API_KEY = ""; // key moved to .env.local → REACT_APP_ANTHROPIC_KEY
 
 function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTrip, editTrip }) {
   const isEditing = !!editTrip;
