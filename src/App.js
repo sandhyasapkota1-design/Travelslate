@@ -548,6 +548,14 @@ const STATE_NAMES = {
 };
 
 // Returns true if entry matches a lowercase search query against name/city/state/cuisine.
+// Returns true if the destination conventionally uses miles (US, UK, Myanmar, Liberia).
+function usesImperial(destination) {
+  const d = (destination || "").toLowerCase();
+  const usStates = [", al",", ak",", az",", ar",", ca",", co",", ct",", de",", fl",", ga",", hi",", id",", il",", in",", ia",", ks",", ky",", la",", me",", md",", ma",", mi",", mn",", ms",", mo",", mt",", ne",", nv",", nh",", nj",", nm",", ny",", nc",", nd",", oh",", ok",", or",", pa",", ri",", sc",", sd",", tn",", tx",", ut",", vt",", va",", wa",", wv",", wi",", wy",", dc"];
+  if (usStates.some(s => d.includes(s))) return true;
+  return ["usa","united states","united kingdom","uk","england","scotland","wales","northern ireland","myanmar","burma","liberia"].some(k => d.includes(k));
+}
+
 // State matching supports both abbreviation ("CO") and full name ("colorado").
 function entryMatchesSearch(e, q) {
   const stateAbbr = (e.state || "").toLowerCase();
@@ -804,7 +812,7 @@ function VerdictBadge({ verdict }) {
 
 // ─── ENTRY CARD ──────────────────────────────────────────────────────────────
 function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto, onRateInline }) {
-  const typeIcon = { restaurant: "🍽", brewery: "🍺", activity: "🏔", cafe: "☕" }[entry.type] || "📍";
+  const typeIcon = { restaurant: "🍽", hotel: "🏨", brewery: "🍺", activity: "🏔", cafe: "☕" }[entry.type] || "📍";
   return (
     <div style={{
       background: "#fff", border: "1px solid #efefef", borderRadius: "14px",
@@ -1268,15 +1276,15 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
 
         <div style={{ marginTop: 14, marginBottom: 14 }}>
           <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Type</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            {["restaurant","brewery","cafe","activity"].map(t => (
+          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            {["restaurant","hotel","brewery","cafe","activity"].map(t => (
               <button key={t} onClick={() => setForm(f => ({...f, type: t}))}
                 style={{ background: form.type === t ? "#000" : "#f8f8f8",
                   border: `1px solid ${form.type === t ? "#000" : "#efefef"}`,
                   color: form.type === t ? "#fff" : "#555",
                   borderRadius: 6, padding: "6px 12px", cursor: "pointer",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "capitalize" }}>
-                {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔" }[t]} {t}
+                {{ restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔" }[t]} {t}
               </button>
             ))}
           </div>
@@ -1459,7 +1467,7 @@ function CitySearch({ onSelect }) {
         {selected && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#22c55e" }}>✓</span>}
       </div>
       {open && suggestions.length > 0 && createPortal(
-        <div style={{ position: "absolute", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
+        <div style={{ position: "fixed", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
           background: "#fff", border: "1px solid #efefef", borderRadius: 8, zIndex: 99999,
           boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflow: "hidden" }}>
           {suggestions.map((s, i) => (
@@ -1490,7 +1498,7 @@ function DestinationAutocomplete({ value, onChange, onSelect, placeholder, style
   const fetchSuggestions = (q) => {
     if (!q || q.length < 2) { setSuggestions([]); setOpen(false); return; }
     setLoading(true);
-    fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&layer=city&layer=state&layer=country`)
+    fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&layer=city&layer=county&layer=district&layer=state&layer=country`)
       .then(r => r.json())
       .then(data => {
         const seen = new Set();
@@ -1506,7 +1514,7 @@ function DestinationAutocomplete({ value, onChange, onSelect, placeholder, style
         setSuggestions(results);
         if (results.length > 0 && inputRef.current) {
           const r = inputRef.current.getBoundingClientRect();
-          setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: r.width });
+          setDropPos({ top: r.bottom, left: r.left, width: r.width });
         }
         setOpen(results.length > 0);
       })
@@ -1538,7 +1546,7 @@ function DestinationAutocomplete({ value, onChange, onSelect, placeholder, style
       />
       {loading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#aaa" }}>...</span>}
       {open && suggestions.length > 0 && createPortal(
-        <div style={{ position: "absolute", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
+        <div style={{ position: "fixed", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
           background: "#fff", border: "1px solid #efefef", borderRadius: 8, zIndex: 99999,
           boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflow: "hidden" }}>
           {suggestions.map((s, i) => (
@@ -1598,6 +1606,8 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
     try {
       const n = parseInt(manualDays) || 3;
       const dest = manualDestination || "the destination";
+      const distUnit = usesImperial(dest) ? "miles" : "km";
+      const distLabel = distUnit === "miles" ? "mi" : "km";
       // TODO: Move this call to a backend proxy so the API key is never
       // sent in browser network traffic. See: https://docs.anthropic.com/en/api/getting-started
       const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
@@ -1618,7 +1628,7 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 2500,
+          max_tokens: 3500,
           messages: [{
             role: "user",
             // User content is bracketed in XML tags so injected text cannot
@@ -1631,17 +1641,18 @@ Instructions:
 3. Name each day after its area: "Day 1 — Downtown & LoDo", "Day 2 — RiNo & Five Points", etc.
 4. Order days logically as a loop: start near the arrival area, explore outward, end near departure.
 5. 3–5 places per day, ordered by time of day: breakfast → lunch → afternoon activity → dinner → bar/evening.
-6. For each place infer: type (restaurant/cafe/brewery/bar/activity/hiking/shopping), cuisine if food, city if mentioned.
+6. For each place infer: type (restaurant/cafe/brewery/bar/hotel/activity/hiking/shopping), cuisine if food, city if mentioned.
 7. If the user says "must go" or "highly recommend" for a place, set verdict to "must_go". Otherwise use "want_to_try".
 8. If the user specifies a day for a place ("on day 2, go to X"), honor it.
 9. If a city isn't mentioned for a place, default to ${dest}.
 10. Do not invent places not mentioned in the notes.${existingPlaces ? `\n11. These places are already in the plan — incorporate them into the appropriate day:\n${existingPlaces}` : ""}
+11. For every place EXCEPT the first in each day, estimate the travel distance from the previous stop using ${distUnit} (e.g. "0.8 ${distLabel}") and approximate travel mode + time (e.g. "10 min walk" or "5 min drive"). Set distanceFromPrev and travelTimeFromPrev. Leave both null for the first place of each day.
 
 User notes:
 <user_notes>${manualNotes}</user_notes>
 
 Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Schema:
-{"days":[{"id":"s1","name":"Day 1 — Neighborhood Name","items":[{"id":"i1_1","name":"Place Name","type":"restaurant","note":"short tip from the notes","city":"City Name","state":"CO","verdict":"must_go","cuisine":"Italian"}]}]}`
+{"days":[{"id":"s1","name":"Day 1 — Neighborhood Name","items":[{"id":"i1_1","name":"Place Name","type":"restaurant","note":"short tip from the notes","city":"City Name","state":"CO","verdict":"must_go","cuisine":"Italian","distanceFromPrev":null,"travelTimeFromPrev":null}]}]}`
           }]
         })
       });
@@ -1656,7 +1667,11 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
           id: d.id || ("s" + (i + 1)),
           name: d.name || `Day ${i + 1}`,
           notes: d.notes || d.sectionNotes || "",
-          items: (d.items || d.entries || []).map(e => ({ ...e }))
+          items: (d.items || d.entries || []).map(e => ({
+            ...e,
+            distanceFromPrev: e.distanceFromPrev || null,
+            travelTimeFromPrev: e.travelTimeFromPrev || null
+          }))
         })));
         setManualGenerated(true);
       } else {
@@ -2010,6 +2025,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                           }))}
                           style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", padding: 0, color: "#555" }}>
                           <option value="restaurant">🍽</option>
+                          <option value="hotel">🏨</option>
                           <option value="brewery">🍺</option>
                           <option value="cafe">☕</option>
                           <option value="activity">🏔</option>
@@ -2178,13 +2194,13 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
             <div style={{ marginBottom: 20 }}>
               <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>Interests (optional)</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                {["restaurant","brewery","cafe","activity"].map(t => (
+                {["restaurant","hotel","brewery","cafe","activity"].map(t => (
                   <button key={t} onClick={() => setPrefs(p => ({...p, types: p.types.includes(t) ? p.types.filter(x=>x!==t) : [...p.types, t]}))}
                     style={{ background: prefs.types.includes(t) ? "#000" : "#f8f8f8",
                       border: `1px solid ${prefs.types.includes(t) ? "#000" : "#efefef"}`,
                       color: prefs.types.includes(t) ? "#fff" : "#555",
                       borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>
-                    {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔" }[t]} {t}
+                    {{ restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔" }[t]} {t}
                   </button>
                 ))}
               </div>
@@ -2431,18 +2447,42 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
         {visibleEntries.length} {verdictFilter === "all" ? "Logs" : verdictFilter.replace("_", " ")} {cityFilter ? `in ${cityFilter}` : ""}
       </div>
 
-      {visibleEntries.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 20px", background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14 }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
-          <div style={{ fontSize: 14, color: "#888" }}>No logs match your filters</div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visibleEntries.map(e => (
-            <div key={e.id} style={{ position: "relative" }}>
-              <EntryCard entry={e} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {visibleEntries.length === 0 ? (
+          <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "52px 20px", color: "#aaa", background: "#fafafa", borderRadius: 16, border: "1px dashed #e8e8e8" }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 4 }}>No logs match your filters</div>
+          </div>
+        ) : visibleEntries.map(e => (
+          <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+            <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+              <img src={(e.photos && e.photos.length > 0) ? e.photos[0] : getPlacePhoto(e)} alt={e.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+            </div>
+            <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={ev => ev.stopPropagation()}
+                  style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3 }}
+                  onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                  onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                  {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
+                </a>
+                <StarRating value={e.rating} size={11} />
+              </div>
+              <div style={{ fontSize: 11, color: "#888" }}>
+                {e.city}{e.state ? `, ${e.state}` : ""} · {e.cuisine || e.type}
+              </div>
+              {e.verdict && <VerdictBadge verdict={e.verdict} />}
+              {e.notes && (
+                <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                  "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                </div>
+              )}
               {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
-                <div style={{ position: "absolute", bottom: 12, right: 12 }}>
+                <div style={{ marginTop: 4 }}>
                   <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
                     style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
                     defaultValue="">
@@ -2454,9 +2494,9 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2477,7 +2517,7 @@ const EXTENDED_ACTIVITY = [
   { id: "a12", userId: "u3", type: "log", entryId: "e18", timeAgo: "4d ago", text: "logged a new place" },
 ];
 
-const TYPE_ICON = { restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔" };
+const TYPE_ICON = { restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔" };
 const ACTION_COLOR = { log: "#e8c84a", verdict: "#4ade80", trip: "#60a5fa", dish: "#f4845f" };
 
 function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, setFriendState, onViewProfile, savedTrips, onAddToTrip }) {
@@ -3134,15 +3174,15 @@ function EditEntryModal({ entry, onClose, onSave }) {
 
         <div style={{ marginTop: 14, marginBottom: 14 }}>
           <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Type</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            {["restaurant","brewery","cafe","activity"].map(t => (
+          <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            {["restaurant","hotel","brewery","cafe","activity"].map(t => (
               <button key={t} onClick={() => setForm(f => ({...f, type: t}))}
                 style={{ background: form.type === t ? "#000" : "#f8f8f8",
                   border: `1px solid ${form.type === t ? "#000" : "#efefef"}`,
                   color: form.type === t ? "#fff" : "#555",
                   borderRadius: 6, padding: "6px 12px", cursor: "pointer",
                   fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "capitalize" }}>
-                {{"restaurant":"🍽","brewery":"🍺","cafe":"☕","activity":"🏔"}[t]} {t}
+                {{"restaurant":"🍽","hotel":"🏨","brewery":"🍺","cafe":"☕","activity":"🏔"}[t]} {t}
               </button>
             ))}
           </div>
@@ -3703,7 +3743,7 @@ function MiniTripMap({ trip, onOpenFull }) {
 }
 
 // ─── SHARED TRIP CARD ────────────────────────────────────────────────────────
-function SharedTripCard({ trip, sharer, onImportToLogs }) {
+function SharedTripCard({ trip, sharer, onImportToLogs, onViewProfile, savedTrips, onAddToTrip }) {
   const [expanded, setExpanded] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
 
@@ -3728,7 +3768,12 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
               <span style={{ fontSize: 12, color: "#999" }}>{trip.days} day{trip.days !== 1 ? "s" : ""}</span>
               <span style={{ color: "#ddd" }}>·</span>
               <span style={{ fontSize: 12, color: "#999" }}>
-                Shared by {sharer?.avatar} {sharer?.name || "a friend"}
+                Shared by{" "}
+                <span
+                  onClick={e => { e.stopPropagation(); sharer && onViewProfile && onViewProfile(sharer.id); }}
+                  style={{ cursor: sharer && onViewProfile ? "pointer" : "default", textDecoration: sharer && onViewProfile ? "underline" : "none", color: "#555", fontWeight: 600 }}>
+                  {sharer?.avatar} {sharer?.name || "a friend"}
+                </span>
               </span>
               <span style={{ color: "#ddd" }}>·</span>
               <span style={{ fontSize: 12, color: "#bbb" }}>{trip.sharedAt}</span>
@@ -3818,8 +3863,17 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
                     )}
 
                     {/* Place cards */}
-                    {dayEntries.map(e => (
-                      <div key={e.id} onClick={ev => ev.stopPropagation()}
+                    {dayEntries.map((e, entIdx) => (
+                      <div key={e.id}>
+                        {entIdx > 0 && (e.distanceFromPrev || e.travelTimeFromPrev) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 0 6px 18px" }}>
+                            <div style={{ width: 1, height: 14, background: "#e0e0e0" }} />
+                            <span style={{ fontSize: 10, color: "#bbb", fontWeight: 500 }}>
+                              {[e.distanceFromPrev, e.travelTimeFromPrev].filter(Boolean).join(" · ")}
+                            </span>
+                          </div>
+                        )}
+                      <div onClick={ev => ev.stopPropagation()}
                         style={{ display: "flex", gap: 12, alignItems: "flex-start",
                           padding: "11px 13px", marginBottom: 6,
                           background: "#fff", border: "1px solid #efefef", borderRadius: 14,
@@ -3829,7 +3883,7 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
                         <div style={{ width: 42, height: 42, borderRadius: 10, flexShrink: 0,
                           background: dayColor + "18", display: "flex", alignItems: "center",
                           justifyContent: "center", fontSize: 20 }}>
-                          {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
+                          {{ restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
                         </div>
 
                         {/* Info */}
@@ -3852,15 +3906,31 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
                           )}
                         </div>
 
-                        {/* Log button */}
-                        <button onClick={ev => { ev.stopPropagation(); onImportToLogs(e); }}
-                          title="Log to diary"
-                          style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
-                            border: "1.5px solid #e0e0e0", background: "transparent", flexShrink: 0,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 13, color: "#ccc" }}>
-                          📍
-                        </button>
+                        {/* Action buttons */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                          <button onClick={ev => { ev.stopPropagation(); onImportToLogs(e); }}
+                            title="Log to diary"
+                            style={{ height: 28, borderRadius: 8, cursor: "pointer",
+                              border: "1.5px solid #c8a882", background: "#fdf6f0", flexShrink: 0,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 11, fontWeight: 700, color: "#b07040", padding: "0 10px",
+                              letterSpacing: "0.03em" }}>
+                            Log
+                          </button>
+                          {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
+                            <select onClick={ev => ev.stopPropagation()}
+                              onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
+                              style={{ height: 28, background: "#000", color: "#fff", border: "none", borderRadius: 8,
+                                padding: "0 6px", fontSize: 10, fontWeight: 600, cursor: "pointer", width: "100%" }}
+                              defaultValue="">
+                              <option value="" disabled>+ Trip</option>
+                              {savedTrips.filter(t => !t.completed).map(t => (
+                                <option key={t.id} value={t.id}>{t.destination}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
                       </div>
                     ))}
                   </div>
@@ -3874,6 +3944,189 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
       {/* Full map modal */}
       {showMapModal && (
         <TripMapModal trip={trip} onClose={() => setShowMapModal(false)} />
+      )}
+    </div>
+  );
+}
+
+// ─── ADD PLACE INPUT WITH SUGGESTIONS ───────────────────────────────────────
+// Maps Google Places types to our internal types
+function inferTypeFromGoogleTypes(types) {
+  if (!types) return "activity";
+  if (types.some(t => ["restaurant","food","meal_takeaway","meal_delivery","cafe","bakery","bar"].includes(t))) {
+    if (types.includes("bar") || types.includes("night_club")) return "brewery";
+    if (types.includes("cafe") || types.includes("bakery")) return "cafe";
+    return "restaurant";
+  }
+  if (types.some(t => ["lodging","hotel"].includes(t))) return "activity";
+  if (types.some(t => ["park","natural_feature","campground"].includes(t))) return "hiking";
+  return "activity";
+}
+
+async function searchGooglePlaces(query, destination) {
+  try {
+    const url = `/api/places?q=${encodeURIComponent(query)}&destination=${encodeURIComponent(destination)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data.error || data.status === "REQUEST_DENIED") return [];
+    return (data.results || []).slice(0, 6).map(p => {
+      const addr = p.formatted_address || "";
+      const parts = addr.split(",").map(s => s.trim());
+      return {
+        id: "gp_" + p.place_id,
+        name: p.name,
+        type: inferTypeFromGoogleTypes(p.types),
+        city: parts[1] || parts[0] || "",
+        state: parts[2]?.replace(/\d+/g, "").trim() || "",
+        country: parts[parts.length - 1] || "",
+        verdict: "want_to_try",
+        cuisine: "",
+        notes: p.formatted_address || "",
+        rating: p.rating || null,
+        _source: "google",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function AddPlaceInput({ entries, trip, onAdd }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const [googleResults, setGoogleResults] = useState([]);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  const destParts = (trip.destination || "").split(",").map(s => s.trim());
+  const destState = destParts[1] || "";
+  const destCountry = destParts[2] || destParts[1] || "";
+
+  // Local entries filtered to same region
+  const localSuggestions = query.trim().length >= 1
+    ? (entries || []).filter(e => {
+        const q = query.toLowerCase();
+        const matchesQuery = e.name.toLowerCase().includes(q) ||
+          (e.city || "").toLowerCase().includes(q) ||
+          (e.cuisine || "").toLowerCase().includes(q);
+        const sameRegion = destState
+          ? (e.state || "").toLowerCase() === destState.toLowerCase()
+          : destCountry
+            ? (e.country || "").toLowerCase().includes(destCountry.toLowerCase())
+            : true;
+        return matchesQuery && sameRegion;
+      }).slice(0, 4)
+    : [];
+
+  // Trigger Google Places search with debounce
+  useEffect(() => {
+    if (query.trim().length < 2) { setGoogleResults([]); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setGoogleLoading(true);
+      const results = await searchGooglePlaces(query, trip.destination || "");
+      setGoogleResults(results);
+      setGoogleLoading(false);
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, trip.destination]);
+
+  const commit = (entry) => {
+    if (typeof entry === "string") {
+      if (!entry.trim()) return;
+      onAdd({ name: entry.trim() });
+    } else {
+      onAdd(entry);
+    }
+    setQuery("");
+    setOpen(false);
+    setGoogleResults([]);
+  };
+
+  const handleFocus = () => {
+    if (inputRef.current) setRect(inputRef.current.getBoundingClientRect());
+    setOpen(true);
+  };
+
+  const hasResults = localSuggestions.length > 0 || googleResults.length > 0 || googleLoading || query.trim();
+
+  const PlaceRow = ({ e, badge }) => (
+    <div onMouseDown={() => commit(e)}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px",
+        cursor: "pointer", borderBottom: "1px solid #f5f5f5" }}
+      onMouseEnter={ev => ev.currentTarget.style.background = "#f8f8f8"}
+      onMouseLeave={ev => ev.currentTarget.style.background = "#fff"}>
+      <span style={{ fontSize: 16 }}>
+        {{ restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</div>
+        <div style={{ fontSize: 11, color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {e._source === "google"
+            ? e.notes
+            : [e.cuisine || e.type, e.city, e.state].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      {badge && <span style={{ fontSize: 9, fontWeight: 700, color: badge.color, background: badge.bg, border: `1px solid ${badge.border}`, borderRadius: 6, padding: "2px 6px", flexShrink: 0 }}>{badge.label}</span>}
+    </div>
+  );
+
+  return (
+    <div style={{ position: "relative", marginTop: 2 }} onClick={e => e.stopPropagation()}>
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
+        onFocus={e => { handleFocus(); e.target.style.borderColor = "#ccc"; }}
+        onBlur={e => { setTimeout(() => setOpen(false), 150); e.target.style.borderColor = "#e8e8e8"; }}
+        onKeyDown={ev => { if (ev.key === "Enter") { commit(query); ev.target.blur(); } if (ev.key === "Escape") { setOpen(false); setQuery(""); } }}
+        placeholder="+ Add a place…"
+        style={{ width: "100%", boxSizing: "border-box", background: "transparent",
+          border: "1.5px dashed #e8e8e8", borderRadius: 12, padding: "9px 13px",
+          fontSize: 12, color: "#555", outline: "none", cursor: "text" }}
+      />
+      {open && rect && hasResults && createPortal(
+        <div style={{
+          position: "fixed", top: rect.bottom + 4, left: rect.left, width: rect.width,
+          background: "#fff", border: "1px solid #e8e8e8", borderRadius: 12,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 9999, overflow: "hidden", maxHeight: 340, overflowY: "auto"
+        }}>
+          {/* Local network results */}
+          {localSuggestions.length > 0 && (
+            <>
+              <div style={{ padding: "6px 14px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em" }}>From your network</div>
+              {localSuggestions.map(e => (
+                <PlaceRow key={e.id} e={e} badge={e.verdict === "must_go" ? { label: "MUST GO", color: "#22c55e", bg: "#f0fdf4", border: "#bbf7d0" } : null} />
+              ))}
+            </>
+          )}
+
+          {/* Google Places results */}
+          {(googleLoading || googleResults.length > 0) && (
+            <>
+              <div style={{ padding: "6px 14px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", borderTop: localSuggestions.length > 0 ? "1px solid #f0f0f0" : "none" }}>
+                {googleLoading ? "Searching Google Places…" : "Google Places"}
+              </div>
+              {googleResults.map(e => (
+                <PlaceRow key={e.id} e={e} badge={{ label: "Google", color: "#4285f4", bg: "#f0f6ff", border: "#c7d9ff" }} />
+              ))}
+            </>
+          )}
+
+          {/* Fallback: add as free text */}
+          {query.trim() && (
+            <div onMouseDown={() => commit(query)}
+              style={{ padding: "9px 14px", cursor: "pointer", fontSize: 12, color: "#888", fontStyle: "italic", borderTop: "1px solid #f0f0f0" }}
+              onMouseEnter={ev => ev.currentTarget.style.background = "#f8f8f8"}
+              onMouseLeave={ev => ev.currentTarget.style.background = "#fff"}>
+              Add "{query}" as new place
+            </div>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -3911,9 +4164,34 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [overflowMenuPos, setOverflowMenuPos] = useState(null);
   const overflowBtnRef = useRef(null);
+  const utilitySectionRef = useRef(null);
 
   useEffect(() => {
     if (!expanded) setConfirmingComplete(false);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!showBookRemind && !showPackList && !showIdeasNote) return;
+    const handleClickOutside = e => {
+      if (utilitySectionRef.current && !utilitySectionRef.current.contains(e.target)) {
+        setShowBookRemind(false);
+        setShowPackList(false);
+        setShowIdeasNote(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showBookRemind, showPackList, showIdeasNote]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const handleClickOutside = e => {
+      if (cardRef.current && !cardRef.current.contains(e.target)) {
+        setExpanded(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [expanded]);
 
   useEffect(() => {
@@ -3970,6 +4248,8 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
     try {
       const n = trip.plan.days.length;
       const dest = trip.destination || "the destination";
+      const distUnit = usesImperial(dest) ? "miles" : "km";
+      const distLabel = distUnit === "miles" ? "mi" : "km";
       const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
       if (!apiKey) throw new Error("No API key — paste your sk-ant-... key into HARDCODED_API_KEY.");
       const existingPlaces = trip.plan.days
@@ -3985,7 +4265,7 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 2500,
+          max_tokens: 3500,
           messages: [{
             role: "user",
             content: `You are an expert travel itinerary planner. Rebuild this ${n}-day trip to ${dest} using the updated notes below.
@@ -4000,12 +4280,13 @@ Instructions:
 7. "Must go" / "highly recommend" → verdict "must_go". Otherwise "want_to_try".
 8. If user specifies a day for a place ("Day 2: Red Rocks"), honor it.
 9. Default city to ${dest} if not mentioned. Do not invent places.${existingPlaces ? `\nCurrently in the trip: ${existingPlaces}` : ""}
+10. For every place EXCEPT the first in each day, estimate the travel distance from the previous stop using ${distUnit} (e.g. "0.8 ${distLabel}") and approximate travel mode + time (e.g. "10 min walk" or "5 min drive"). Set distanceFromPrev and travelTimeFromPrev. Leave both null for the first place of each day.
 
 Updated notes:
 <user_notes>${regenNotes}</user_notes>
 
 Return ONLY valid JSON, no explanation, no markdown fences:
-{"days":[{"id":"s1","name":"Day 1 — Neighborhood","entries":[{"id":"i1_1","name":"Place Name","type":"restaurant","notes":"tip","city":"City","state":"CO","verdict":"must_go","cuisine":"Italian"}]}]}`
+{"days":[{"id":"s1","name":"Day 1 — Neighborhood","entries":[{"id":"i1_1","name":"Place Name","type":"restaurant","notes":"tip","city":"City","state":"CO","verdict":"must_go","cuisine":"Italian","distanceFromPrev":null,"travelTimeFromPrev":null}]}]}`
           }]
         })
       });
@@ -4025,7 +4306,9 @@ Return ONLY valid JSON, no explanation, no markdown fences:
             name: e.name, type: e.type || "activity",
             city: e.city || dest, state: e.state || "",
             verdict: e.verdict || "must_go",
-            cuisine: e.cuisine || "", notes: e.notes || e.note || ""
+            cuisine: e.cuisine || "", notes: e.notes || e.note || "",
+            distanceFromPrev: e.distanceFromPrev || null,
+            travelTimeFromPrev: e.travelTimeFromPrev || null
           }))
         }));
         onUpdate({ ...trip, notes: regenNotes, plan: { ...trip.plan, days: newDays } });
@@ -4429,6 +4712,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
           )}
 
           {/* Utility sections */}
+          <div ref={utilitySectionRef}>
           <div style={{ padding: "12px 20px", display: "flex", gap: 8, borderBottom: "1px solid #f5f5f5", flexWrap: "wrap" }}>
             {!past && <>
               <button onClick={e => { e.stopPropagation(); setShowBookRemind(v => !v); }}
@@ -4613,6 +4897,8 @@ Return ONLY valid JSON, no explanation, no markdown fences:
             </div>
           )}
 
+          </div>{/* end utilitySectionRef */}
+
           {/* ── TIMELINE ── */}
           <div style={{ padding: "20px 20px 24px" }}>
             {/* Collapse all / Expand all — only show for trips with 3+ days */}
@@ -4720,8 +5006,18 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                     ) : null}
 
                     {/* Place cards */}
-                    {dayEntries.map((e) => (
-                      <div key={e.id} onClick={ev => ev.stopPropagation()}
+                    {dayEntries.map((e, entIdx) => (
+                      <div key={e.id}>
+                        {/* Distance connector from previous stop */}
+                        {entIdx > 0 && (e.distanceFromPrev || e.travelTimeFromPrev) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 0 6px 18px" }}>
+                            <div style={{ width: 1, height: 14, background: "#e0e0e0" }} />
+                            <span style={{ fontSize: 10, color: "#bbb", fontWeight: 500 }}>
+                              {[e.distanceFromPrev, e.travelTimeFromPrev].filter(Boolean).join(" · ")}
+                            </span>
+                          </div>
+                        )}
+                      <div onClick={ev => ev.stopPropagation()}
                         style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "11px 13px",
                           marginBottom: 6, background: e.visited ? "#fafafa" : "#fff",
                           border: `1px solid ${e.visited ? "#f0f0f0" : "#efefef"}`,
@@ -4732,7 +5028,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                         <div style={{ width: 42, height: 42, borderRadius: 10, flexShrink: 0,
                           background: dayColor + "18", display: "flex", alignItems: "center",
                           justifyContent: "center", fontSize: 20 }}>
-                          {{ restaurant: "🍽", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
+                          {{ restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔", hiking: "🥾" }[e.type] || "📍"}
                         </div>
 
                         {/* Info */}
@@ -4771,11 +5067,12 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                           {/* Log to diary */}
                           {onImportSingle && (
                             <button onClick={() => onImportSingle(e)} title="Log to diary"
-                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
-                                border: "1.5px solid #e0e0e0", background: "transparent",
+                              style={{ height: 28, borderRadius: 8, cursor: "pointer",
+                                border: "1.5px solid #c8a882", background: "#fdf6f0",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 13, color: "#ccc" }}>
-                              📍
+                                fontSize: 11, fontWeight: 700, color: "#b07040", padding: "0 10px",
+                                letterSpacing: "0.03em" }}>
+                              Log
                             </button>
                           )}
                           {/* Remove */}
@@ -4790,19 +5087,25 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                           )}
                         </div>
                       </div>
+                      </div>
                     ))}
 
-                    {/* Add place input */}
+                    {/* Add place input with suggestions */}
                     {!past && onUpdate && (
-                      <input placeholder="+ Add a place…" onClick={e => e.stopPropagation()}
-                        style={{ width: "100%", boxSizing: "border-box", background: "transparent",
-                          border: "1.5px dashed #e8e8e8", borderRadius: 12, padding: "9px 13px",
-                          fontSize: 12, color: "#bbb", outline: "none", cursor: "text", marginTop: 2 }}
-                        onFocus={e => e.target.style.borderColor = "#ccc"}
-                        onBlur={e => e.target.style.borderColor = "#e8e8e8"}
-                        onKeyDown={ev => {
-                          if (ev.key === "Enter") { addPlace(dayIdx, ev.target.value); ev.target.value = ""; }
-                        }} />
+                      <AddPlaceInput
+                        entries={entries}
+                        trip={trip}
+                        onAdd={entry => {
+                          if (!onUpdate) return;
+                          const newEntry = entry.id
+                            ? { ...entry, id: "q_" + Date.now() }
+                            : { id: "q_" + Date.now(), name: entry.name.trim(), type: entry.type || "activity", city: entry.city || trip.destination, state: entry.state || "", verdict: entry.verdict || "must_go", cuisine: entry.cuisine || "" };
+                          const newDays = trip.plan.days.map((d, i) =>
+                            i === dayIdx ? { ...d, entries: [...(d.entries || d.items || []), newEntry] } : d
+                          );
+                          onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+                        }}
+                      />
                     )}
                     </>)}
                   </div>
@@ -4968,6 +5271,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
     if (networkVerdict !== "all" && e.verdict !== networkVerdict) return false;
     if (networkMinRating > 0 && (e.rating || 0) < networkMinRating) return false;
     if (networkSort === "bookmarked" && !(savedBookmarks || new Set()).has(e.id)) return false;
+    if (networkCategory === "hotel") return e.type === "hotel";
     if (networkCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
     if (networkCategory === "hiking") {
       const activity = MOCK_ACTIVITIES.find(a => a.name === e.name);
@@ -5053,6 +5357,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
           <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
             {catBtn("all", networkCategory, setNetworkCategory, "All")}
             {catBtn("food", networkCategory, setNetworkCategory, "🍽 Food")}
+            {catBtn("hotel", networkCategory, setNetworkCategory, "🏨 Hotel")}
             {catBtn("hiking", networkCategory, setNetworkCategory, "🥾 Hiking")}
             {catBtn("kids", networkCategory, setNetworkCategory, "👶 Kids")}
             {catBtn("activities", networkCategory, setNetworkCategory, "⛺ Activities")}
@@ -5351,8 +5656,8 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
   );
 }
 
-// ─── DESTINATION PHOTO (Wikipedia thumbnail, cached) ─────────────────────────
-const _wikiPhotoCache = {};
+// ─── DESTINATION PHOTO (Unsplash via backend proxy, cached) ──────────────────
+const _destPhotoCache = {};
 const _DEST_FALLBACK = "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=700&q=80";
 
 function DestinationPhoto({ destination, coverPhoto, style }) {
@@ -5361,13 +5666,11 @@ function DestinationPhoto({ destination, coverPhoto, style }) {
     if (coverPhoto) { setSrc(coverPhoto); return; }
     if (!destination) return;
     const key = destination.trim();
-    if (_wikiPhotoCache[key]) { setSrc(_wikiPhotoCache[key]); return; }
-    fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(key)}&prop=pageimages&format=json&pithumbsize=800&origin=*`)
+    if (_destPhotoCache[key]) { setSrc(_destPhotoCache[key]); return; }
+    fetch(`/api/destination-photo?destination=${encodeURIComponent(key)}`)
       .then(r => r.json())
       .then(data => {
-        const page = Object.values(data?.query?.pages || {})[0];
-        const url = page?.thumbnail?.source;
-        if (url) { _wikiPhotoCache[key] = url; setSrc(url); }
+        if (data?.url) { _destPhotoCache[key] = data.url; setSrc(data.url); }
       })
       .catch(() => {});
   }, [destination, coverPhoto]);
@@ -5672,15 +5975,25 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
 }
 
 // ─── MY LOGS TAB COMPONENT ───────────────────────────────────────────────────
-function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEntry, showImport, setShowImport, onEditProfile }) {
+function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEntry, showImport, setShowImport, onEditProfile, onGoToTrips, savedBookmarks, onToggleBookmark }) {
+  const [myLogsView, setMyLogsView] = useState("logs"); // "logs" | "saved"
   const [logsCategory, setLogsCategory] = useState("all");
   const [logsSearch, setLogsSearch] = useState("");
   const [importResult, setImportResult] = useState(null);
   const [logsVerdictFilter, setLogsVerdictFilter] = useState(null);
   const [logsCityFilter, setLogsCityFilter] = useState(null);
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [logsCountryFilter, setLogsCountryFilter] = useState(null);
+  const [showStatePicker, setShowStatePicker] = useState(false);
+  const [logsStateFilter, setLogsStateFilter] = useState(null);
   const myEntries = entries.filter(e => e.userId === "u1");
+  const savedEntries = savedBookmarks && savedBookmarks.size > 0
+    ? entries.filter(e => savedBookmarks.has(e.id))
+    : [];
   const myCities = [...new Set(myEntries.map(e => e.city).filter(Boolean))].sort();
+  const myCountries = [...new Set(myEntries.map(e => e.country).filter(Boolean))].sort();
+  const myStates = [...new Set(myEntries.filter(e => e.country === "USA" || e.country === "US" || !e.country).map(e => e.state).filter(Boolean))].sort();
 
   const parseAllTrailsCSV = (text) => {
     const lines = text.trim().split("\n");
@@ -5715,7 +6028,10 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
     }
     if (logsVerdictFilter && e.verdict !== logsVerdictFilter) return false;
     if (logsCityFilter && e.city !== logsCityFilter) return false;
+    if (logsCountryFilter && e.country !== logsCountryFilter) return false;
+    if (logsStateFilter && e.state !== logsStateFilter) return false;
     if (logsCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
+    if (logsCategory === "hotel") return e.type === "hotel";
     if (logsCategory === "hiking") return e.type === "hiking";
     if (logsCategory === "kids") return e.type === "kids";
     if (logsCategory === "activities") return e.type === "scenic" || e.type === "outdoor";
@@ -5756,10 +6072,12 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
         </div>
         <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
           {[
-            { label: "Logs", value: myEntries.length, action: () => { setLogsVerdictFilter(null); setLogsCityFilter(null); setShowCityPicker(false); }, active: !logsVerdictFilter && !logsCityFilter },
-            { label: "Must Go", value: myEntries.filter(e=>e.verdict==="must_go").length, action: () => { setLogsVerdictFilter(logsVerdictFilter === "must_go" ? null : "must_go"); setShowCityPicker(false); }, active: logsVerdictFilter === "must_go" },
-            { label: "Cities", value: myCities.length, action: () => setShowCityPicker(s => !s), active: showCityPicker || !!logsCityFilter },
-            { label: "Trips", value: savedTrips.length, action: null, active: false },
+            { label: "Logs", value: myEntries.length, action: () => { setLogsVerdictFilter(null); setLogsCityFilter(null); setLogsCountryFilter(null); setLogsStateFilter(null); setShowCityPicker(false); setShowCountryPicker(false); setShowStatePicker(false); }, active: !logsVerdictFilter && !logsCityFilter && !logsCountryFilter && !logsStateFilter },
+            { label: "Must Go", value: myEntries.filter(e=>e.verdict==="must_go").length, action: () => { setLogsVerdictFilter(logsVerdictFilter === "must_go" ? null : "must_go"); setShowCityPicker(false); setShowCountryPicker(false); setShowStatePicker(false); }, active: logsVerdictFilter === "must_go" },
+            { label: "Cities", value: myCities.length, action: () => { setShowCityPicker(s => !s); setShowCountryPicker(false); setShowStatePicker(false); }, active: showCityPicker || !!logsCityFilter },
+            { label: "States", value: myStates.length, action: () => { setShowStatePicker(s => !s); setShowCityPicker(false); setShowCountryPicker(false); }, active: showStatePicker || !!logsStateFilter },
+            { label: "Countries", value: myCountries.length, action: () => { setShowCountryPicker(s => !s); setShowCityPicker(false); setShowStatePicker(false); }, active: showCountryPicker || !!logsCountryFilter },
+            { label: "Trips", value: savedTrips.length, action: onGoToTrips, active: false },
           ].map(({ label, value, action, active }) => (
             <div key={label} onClick={action || undefined}
               style={{ cursor: action ? "pointer" : "default" }}>
@@ -5795,7 +6113,145 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
             </div>
           </div>
         )}
+
+        {/* State picker — shown when States stat is tapped */}
+        {showStatePicker && (
+          <div style={{ marginTop: 14, borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>US States Visited ({myStates.length})</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {logsStateFilter && (
+                <button onClick={() => setLogsStateFilter(null)}
+                  style={{ background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 20, padding: "4px 12px", fontSize: 11, color: "#555", cursor: "pointer" }}>
+                  ✕ Clear
+                </button>
+              )}
+              {myStates.map(s => {
+                const count = myEntries.filter(e => e.state === s).length;
+                return (
+                  <button key={s} onClick={() => setLogsStateFilter(logsStateFilter === s ? null : s)}
+                    style={{ background: logsStateFilter === s ? "#000" : "#f8f8f8",
+                      border: `1px solid ${logsStateFilter === s ? "#000" : "#e8e8e8"}`,
+                      color: logsStateFilter === s ? "#fff" : "#444",
+                      borderRadius: 20, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>
+                    🇺🇸 {s} <span style={{ opacity: 0.6 }}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Country picker — shown when Countries stat is tapped */}
+        {showCountryPicker && (
+          <div style={{ marginTop: 14, borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Countries Visited ({myCountries.length})</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {logsCountryFilter && (
+                <button onClick={() => setLogsCountryFilter(null)}
+                  style={{ background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 20, padding: "4px 12px", fontSize: 11, color: "#555", cursor: "pointer" }}>
+                  ✕ Clear
+                </button>
+              )}
+              {myCountries.map(c => {
+                const count = myEntries.filter(e => e.country === c).length;
+                return (
+                  <button key={c} onClick={() => setLogsCountryFilter(logsCountryFilter === c ? null : c)}
+                    style={{ background: logsCountryFilter === c ? "#000" : "#f8f8f8",
+                      border: `1px solid ${logsCountryFilter === c ? "#000" : "#e8e8e8"}`,
+                      color: logsCountryFilter === c ? "#fff" : "#444",
+                      borderRadius: 20, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>
+                    🌍 {c} <span style={{ opacity: 0.6 }}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* My Logs / Saved tab switcher */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 18, background: "#f0f0f0", borderRadius: 10, padding: 3 }}>
+        {[["logs", "My Logs"], ["saved", `Saved (${savedEntries.length})`]].map(([id, label]) => (
+          <button key={id} onClick={() => setMyLogsView(id)}
+            style={{ flex: 1, background: myLogsView === id ? "#fff" : "transparent",
+              border: "none", borderRadius: 8, padding: "10px 8px", cursor: "pointer",
+              color: myLogsView === id ? "#000" : "#888", fontWeight: myLogsView === id ? 600 : 400,
+              fontSize: 13, boxShadow: myLogsView === id ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              transition: "all 0.2s" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* SAVED VIEW */}
+      {myLogsView === "saved" && (
+        <div>
+          {savedEntries.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "52px 20px", color: "#aaa", background: "#fafafa", borderRadius: 16, border: "1px dashed #e8e8e8" }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>⭐</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 4 }}>No saved places yet</div>
+              <div style={{ fontSize: 13, color: "#aaa" }}>Tap ☆ on any place in the Network feed to save it here</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {savedEntries.map(e => {
+                const user = ALL_USERS.find(u => u.id === e.userId);
+                return (
+                  <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+                    <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+                      <img src={(e.photos && e.photos.length > 0) ? e.photos[0] : getPlacePhoto(e)} alt={e.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+                      <button onClick={() => onToggleBookmark && onToggleBookmark(e.id)}
+                        title="Remove from saved"
+                        style={{ position: "absolute", top: 6, right: 6, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "3px 7px", fontSize: 12, cursor: "pointer", color: "#d97706", lineHeight: 1 }}>
+                        ★
+                      </button>
+                    </div>
+                    <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                        <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={ev => ev.stopPropagation()}
+                          style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3 }}
+                          onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                          onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                          {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
+                        </a>
+                        <StarRating value={e.rating} size={11} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "#888" }}>
+                        {e.city}{e.state ? `, ${e.state}` : ""} · {e.cuisine || e.type}
+                      </div>
+                      {e.difficulty && (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#555", background: "#f0f0f0", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{e.difficulty}</span>
+                      )}
+                      {e.verdict && <VerdictBadge verdict={e.verdict} />}
+                      {e.notes && (
+                        <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                          "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                        </div>
+                      )}
+                      {user && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, borderTop: "1px solid #f0f0f0", paddingTop: 6 }}>
+                          <span style={{ fontSize: 12 }}>{user.avatar}</span>
+                          <span style={{ color: "#555", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            @{user.username}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MY LOGS VIEW */}
+      {myLogsView === "logs" && (
+      <div>
 
       {/* Search + Import */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -5856,6 +6312,7 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
         {catBtn("all", "All")}
         {catBtn("food", "🍽 Food")}
+        {catBtn("hotel", "🏨 Hotel")}
         {catBtn("hiking", "🥾 Hiking")}
         {catBtn("kids", "👶 Kids")}
         {catBtn("activities", "⛺ Activities")}
@@ -5939,6 +6396,8 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
           </div>
         ))}
       </div>
+      </div>
+      )}
     </div>
   );
 }
@@ -6221,11 +6680,11 @@ function MainApp({ user, onLogout }) {
       ],
       plan: { days: [
         { day: 1, city: "Boulder", name: "Day 1 — Pearl Street", activity: "Pearl Street Mall + lunch", notes: "Start with coffee at Boxcar, then wander Pearl St.", entries: [
-          { id: "dc1e1", name: "Boxcar Coffee Roasters", type: "cafe", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Coffee" },
-          { id: "dc1e2", name: "The Kitchen", type: "restaurant", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "American" },
+          { id: "dc1e1", name: "Boxcar Coffee Roasters", type: "cafe", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Coffee", distanceFromPrev: null, travelTimeFromPrev: null },
+          { id: "dc1e2", name: "The Kitchen", type: "restaurant", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "American", distanceFromPrev: "0.3 mi", travelTimeFromPrev: "5 min walk" },
         ]},
         { day: 2, city: "Boulder", name: "Day 2 — Outdoors", activity: "Hiking + brewery", notes: "Chautauqua in the morning, Avery after.", entries: [
-          { id: "dc2e1", name: "Avery Brewing", type: "brewery", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Craft Beer" },
+          { id: "dc2e1", name: "Avery Brewing", type: "brewery", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Craft Beer", distanceFromPrev: null, travelTimeFromPrev: null },
         ]},
       ]}
     }
@@ -6233,6 +6692,8 @@ function MainApp({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [focusTripSection, setFocusTripSection] = useState(null); // { tripId, section }
+  const tripsPlanningRef = useRef(null);
+  const tripsPastRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [readNotifIds, setReadNotifIds] = useState(new Set());
   const [savedBookmarks, setSavedBookmarks] = useState(new Set()); // entry ids bookmarked in Explore
@@ -6406,6 +6867,9 @@ function MainApp({ user, onLogout }) {
             showImport={showImport}
             setShowImport={setShowImport}
             onEditProfile={() => setShowEditProfile(true)}
+            onGoToTrips={() => setTab("trips")}
+            savedBookmarks={savedBookmarks}
+            onToggleBookmark={id => setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
           />
         )}
 
@@ -6437,12 +6901,14 @@ function MainApp({ user, onLogout }) {
             {/* Stats row */}
             <div style={{ display: "flex", gap: 10 }}>
               {[
-                { label: "Active", value: savedTrips.filter(t => !t.completed).length },
-                { label: "Places Planned", value: savedTrips.filter(t => !t.completed).flatMap(t => t.plan?.days?.flatMap(d => d.entries || d.items || []) || []).length },
-                { label: "Past Trips", value: savedTrips.filter(t => t.completed).length },
+                { label: "Active", value: savedTrips.filter(t => !t.completed).length, ref: tripsPlanningRef },
+                { label: "Places Planned", value: savedTrips.filter(t => !t.completed).flatMap(t => t.plan?.days?.flatMap(d => d.entries || d.items || []) || []).length, ref: tripsPlanningRef },
+                { label: "Past Trips", value: savedTrips.filter(t => t.completed).length, ref: tripsPastRef },
               ].map(s => (
-                <div key={s.label} style={{ flex: 1, background: "#fff", border: "1px solid #efefef", borderRadius: 14,
-                  padding: "16px 12px", textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <div key={s.label} onClick={() => s.ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  style={{ flex: 1, background: "#fff", border: "1px solid #efefef", borderRadius: 14,
+                  padding: "16px 12px", textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                  cursor: "pointer" }}>
                   <div style={{ fontSize: 26, fontWeight: 700, color: "#000" }}>{s.value}</div>
                   <div style={{ fontSize: 10, color: "#888", marginTop: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
                 </div>
@@ -6450,7 +6916,7 @@ function MainApp({ user, onLogout }) {
             </div>
 
             {/* Planning section */}
-            <div>
+            <div ref={tripsPlanningRef}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#000", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
                 Planning
               </div>
@@ -6491,7 +6957,7 @@ function MainApp({ user, onLogout }) {
                         }
                       }}
                       onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
-                      onImportSingle={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
+                      onImportSingle={entry => setPrefillEntry(entry)}
                       friendState={friendState}
                       allUsers={ALL_USERS}
                       onViewProfile={setViewProfile}
@@ -6512,7 +6978,16 @@ function MainApp({ user, onLogout }) {
                     const sharer = ALL_USERS.find(u => u.id === trip.sharedBy);
                     return (
                       <SharedTripCard key={trip.id} trip={trip} sharer={sharer}
-                        onImportToLogs={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
+                        onImportToLogs={entry => setPrefillEntry(entry)}
+                        onViewProfile={setViewProfile}
+                        savedTrips={savedTrips}
+                        onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => {
+                          if (t.id !== tripId) return t;
+                          const updatedDays = t.plan?.days ? [...t.plan.days] : [];
+                          if (updatedDays.length === 0) updatedDays.push({ day: 1, city: t.destination, entries: [], activity: "" });
+                          updatedDays[0] = { ...updatedDays[0], entries: [...(updatedDays[0].entries || []), entry] };
+                          return { ...t, plan: { ...t.plan, days: updatedDays } };
+                        }))}
                       />
                     );
                   })}
@@ -6522,7 +6997,7 @@ function MainApp({ user, onLogout }) {
 
             {/* Past section */}
             {savedTrips.filter(t => t.completed).length > 0 && (
-              <div>
+              <div ref={tripsPastRef}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#000", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
                   Past Trips
                 </div>
@@ -6533,7 +7008,7 @@ function MainApp({ user, onLogout }) {
                       past
                       onReactivate={() => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: false} : t))}
                       onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
-                      onImportSingle={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
+                      onImportSingle={entry => setPrefillEntry(entry)}
                       onShare={userId => {
                         const friend = ALL_USERS.find(u => u.id === userId);
                         let wasShared = false;
