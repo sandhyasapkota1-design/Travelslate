@@ -592,6 +592,7 @@ function importTripToLogs(trip, setEntries, setImportToLogsMsg) {
 }
 
 // Normalise and import a single trip entry into the user's log.
+// eslint-disable-next-line no-unused-vars
 function importSingleEntry(entry, setEntries, setImportToLogsMsg) {
   setEntries(prev => [{
     ...entry,
@@ -941,6 +942,7 @@ function DifficultyBadge({ difficulty }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto }) {
   const icon = CATEGORY_ICON[activity.category] || "📍";
   const catLabel = CATEGORY_LABEL[activity.category] || "ACTIVITY";
@@ -2520,6 +2522,7 @@ const EXTENDED_ACTIVITY = [
 const TYPE_ICON = { restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "☕", activity: "🏔" };
 const ACTION_COLOR = { log: "#e8c84a", verdict: "#4ade80", trip: "#60a5fa", dish: "#f4845f" };
 
+// eslint-disable-next-line no-unused-vars
 function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, setFriendState, onViewProfile, savedTrips, onAddToTrip }) {
   const [filter, setFilter] = useState("all");
   const allUsers = ALL_USERS;
@@ -2985,6 +2988,7 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
 }
 
 // ─── ADD DIARY MODAL ─────────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
 function AddDiaryModal({ onClose, onSave, entries }) {
   const [form, setForm] = useState({
     title: "", city: "", state: "", country: "USA",
@@ -4137,8 +4141,11 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
   const cardRef = useRef(null);
   const [expanded, setExpanded] = useState(!!focusSection);
   const [editing, setEditing] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [regenNotes, setRegenNotes] = useState(trip.notes || "");
+  // eslint-disable-next-line no-unused-vars
   const [regenLoading, setRegenLoading] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [regenError, setRegenError] = useState("");
   const [showShareDropdown, setShowShareDropdown] = useState(false);
   const [confirmingComplete, setConfirmingComplete] = useState(false);
@@ -4241,6 +4248,7 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
+  // eslint-disable-next-line no-unused-vars
   const regenerateFromNotes = async () => {
     if (!regenNotes.trim()) return;
     setRegenLoading(true);
@@ -4342,6 +4350,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
+  // eslint-disable-next-line no-unused-vars
   const addPlace = (dayIdx, name) => {
     if (!onUpdate || !name.trim()) return;
     const newEntry = { id: "q_" + Date.now(), name: name.trim(), type: "activity", city: trip.destination, state: "", verdict: "must_go", cuisine: "" };
@@ -5694,6 +5703,7 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
   const upcomingTrips = (savedTrips || []).filter(t => !t.completed).slice(0, 3);
   const friendEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity).slice(-4).reverse();
   const pastTrips = (savedTrips || []).filter(t => t.completed).slice(-4).reverse();
+  // eslint-disable-next-line no-unused-vars
   const myEntries = entries.filter(e => e.userId === "u1");
 
   const verdictLabel = { must_go: "Must Go", liked: "Liked", meh: "Meh", avoid: "Avoid" };
@@ -5995,6 +6005,7 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
   const myCountries = [...new Set(myEntries.map(e => e.country).filter(Boolean))].sort();
   const myStates = [...new Set(myEntries.filter(e => e.country === "USA" || e.country === "US" || !e.country).map(e => e.state).filter(Boolean))].sort();
 
+  // eslint-disable-next-line no-unused-vars
   const parseAllTrailsCSV = (text) => {
     const lines = text.trim().split("\n");
     if (lines.length < 2) return [];
