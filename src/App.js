@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import "./App.css";
 import { createPortal } from "react-dom";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -8,30 +9,35 @@ import "leaflet/dist/leaflet.css";
 const MOCK_USERS = [
   {
     id: "u1", username: "sandy_explores", name: "Sandy S.", avatar: "🌿",
+    avatarImg: "https://randomuser.me/api/portraits/women/44.jpg",
     tags: ["Globe Trotter", "Foodie Oracle", "Brew Connoisseur"],
     tripsCount: 34, countriesCount: 12, citiesCount: 67,
     bio: "Energy engineer by day, taco hunter by night. Colorado-based."
   },
   {
     id: "u2", username: "marco_eats", name: "Marco R.", avatar: "🍜",
+    avatarImg: "https://randomuser.me/api/portraits/men/32.jpg",
     tags: ["Local Expert", "Ramen Pilgrim"],
     tripsCount: 18, countriesCount: 5, citiesCount: 28,
     bio: "I follow noodles across time zones."
   },
   {
     id: "u3", username: "priya_wanders", name: "Priya K.", avatar: "🏔",
+    avatarImg: "https://randomuser.me/api/portraits/women/65.jpg",
     tags: ["Adventure Seeker", "Trail Blazer"],
     tripsCount: 52, countriesCount: 23, citiesCount: 110,
     bio: "Mountains first. Food second. Always both."
   },
   {
     id: "u7", username: "jen_sips", name: "Jen L.", avatar: "☕",
+    avatarImg: "https://randomuser.me/api/portraits/women/17.jpg",
     tags: ["Coffee Pilgrim", "Brunch Queen"],
     tripsCount: 22, countriesCount: 7, citiesCount: 38,
     bio: "Cortado connoisseur. If the latte art is bad, I'm leaving."
   },
   {
     id: "u8", username: "dev_grills", name: "Dev P.", avatar: "🔥",
+    avatarImg: "https://randomuser.me/api/portraits/men/8.jpg",
     tags: ["Spice Hunter", "Foodie Oracle"],
     tripsCount: 31, countriesCount: 14, citiesCount: 55,
     bio: "South Asian food is my love language. Denver transplant via Queens."
@@ -508,6 +514,17 @@ const ACTIVITY_SUGGESTIONS = {
 };
 
 
+// ─── PACK LIST TEMPLATES ─────────────────────────────────────────────────────
+const PACK_LIST_TEMPLATES = {
+  "🏖 Beach": ["Sunscreen SPF 50+", "Swimsuit", "Beach towel", "Flip flops", "Sunglasses", "Hat / sun hat", "After-sun lotion", "Waterproof phone case", "Snorkel gear", "Reusable water bottle"],
+  "⛷ Ski / Winter": ["Ski jacket", "Thermal base layers", "Ski gloves", "Goggles", "Beanie", "Neck gaiter", "Hand warmers", "Lip balm (SPF)", "Boot dryer", "Après-ski shoes"],
+  "🥾 Hiking": ["Trail map + compass", "Water filter / purification tablets", "First aid kit", "Trekking poles", "Headlamp + batteries", "High-energy snacks", "Blister kit", "Emergency whistle", "Rain layer", "Sunscreen"],
+  "🌆 City Break": ["Comfortable walking shoes", "Day pack / crossbody bag", "Travel adapter", "Portable charger", "Reusable tote bag", "Umbrella", "Guidebook or offline maps", "Earplugs (for busy hotels)", "Laundry bag", "Snacks for transit"],
+  "🌍 International": ["Passport + copies", "Travel insurance docs", "Visa / entry docs", "Local currency", "Travel adapter (multi-region)", "Prescription meds + extra supply", "International SIM / eSIM", "Photocopy of ID", "Vaccination records", "Emergency contact card"],
+  "🏕 Camping": ["Tent + stakes + poles", "Sleeping bag (rated for temp)", "Sleeping pad", "Camping stove + fuel", "Cookware set", "Headlamp + extra batteries", "Fire starter / matches", "Bear canister or hang bag", "Biodegradable soap", "Tarp / rain fly"],
+  "👶 Family / Kids": ["Snacks + juice boxes", "Baby wipes (always)", "Kids sunscreen", "Portable white noise machine", "Change of clothes × 2", "First aid kit", "Insect repellent", "Entertainment (tablets, books)", "Stroller / carrier", "Kids' melatonin"],
+};
+
 // ─── SHARED HELPERS ──────────────────────────────────────────────────────────
 
 // All users combined (MOCK_USERS + discoverable users). Module-level constant
@@ -633,20 +650,28 @@ function DayMapButton({ day }) {
 }
 
 // ─── PHOTO GALLERY BUTTON + FULLSCREEN ───────────────────────────────────────
-function PhotoStrip({ photos }) {
+function PhotoStrip({ photos = [], inline = false }) {
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState(0);
-
-  if (!photos || photos.length === 0) return null;
+  const count = photos.length;
+  const hasPhotos = count > 0;
 
   return (
     <>
-      {/* Just a button — no thumbnails */}
-      <button onClick={e => { e.stopPropagation(); setCurrent(0); setOpen(true); }}
-        style={{ marginTop: 10, background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-          padding: "7px 14px", fontSize: 13, color: "#555", cursor: "pointer",
-          display: "inline-flex", alignItems: "center", gap: 6 }}>
-        🌸 Gallery
+      <button
+        onClick={e => { e.stopPropagation(); if (hasPhotos) { setCurrent(0); setOpen(true); } }}
+        disabled={!hasPhotos}
+        style={{
+          background: hasPhotos ? "#f8f8f8" : "#fafafa",
+          border: `1px solid ${hasPhotos ? "#efefef" : "#f0f0f0"}`,
+          borderRadius: 8,
+          padding: inline ? "6px 14px" : "7px 14px",
+          fontSize: 13,
+          color: hasPhotos ? "#555" : "#bbb",
+          cursor: hasPhotos ? "pointer" : "default",
+          display: "inline-flex", alignItems: "center", gap: 6
+        }}>
+        🖼 {count > 0 ? `${count} Photo${count !== 1 ? "s" : ""}` : "Photos"}
       </button>
 
       {/* Full screen gallery */}
@@ -778,7 +803,7 @@ function VerdictBadge({ verdict }) {
 }
 
 // ─── ENTRY CARD ──────────────────────────────────────────────────────────────
-function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto }) {
+function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPrivate, onAddPhoto, onRateInline }) {
   const typeIcon = { restaurant: "🍽", brewery: "🍺", activity: "🏔", cafe: "☕" }[entry.type] || "📍";
   return (
     <div style={{
@@ -798,9 +823,9 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
               target="_blank" rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
               style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: compact ? 15 : 17, fontWeight: 600, textDecoration: "none" }}
-              onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-              onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
-              {entry.name} ↗
+              onMouseEnter={e => { e.currentTarget.style.textDecoration = "underline"; e.currentTarget.querySelector('span').style.color = "#1a73e8"; }}
+              onMouseLeave={e => { e.currentTarget.style.textDecoration = "none"; e.currentTarget.querySelector('span').style.color = "#4285f4"; }}>
+              {entry.name} <span style={{ color: "#4285f4", fontSize: compact ? 12 : 13, fontWeight: 400 }}>↗</span>
             </a>
             <VerdictBadge verdict={entry.verdict} />
           </div>
@@ -823,7 +848,7 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
       {entry.privateNote && !compact && (
         <div style={{ marginTop: 8, background: "#f0f7ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px" }}>
           <span style={{ color: "#3b82f6", fontSize: 10, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.08em", fontWeight: 700 }}>🔒 PRIVATE NOTE</span>
-          <div style={{ color: "#1d4ed8", fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{entry.privateNote}</div>
+          <div style={{ color: "#3b82f6", fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{entry.privateNote}</div>
         </div>
       )}
       {user && (
@@ -841,14 +866,19 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
         </div>
       )}
 
-      {/* Photos display */}
-      {!compact && (entry.photos || []).length > 0 && (
-        <PhotoStrip photos={entry.photos} />
-      )}
-
-      {/* Edit / Private / Photo buttons */}
+      {/* Edit / Private / Photo / Gallery buttons */}
       {!compact && (onEdit || onAddPhoto) && (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {onRateInline && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "#aaa" }}>Rate:</span>
+              {[1,2,3,4,5].map(s => (
+                <span key={s} onClick={e => { e.stopPropagation(); onRateInline(s); }}
+                  style={{ fontSize: 18, cursor: "pointer", color: s <= entry.rating ? "#e8c84a" : "#ddd",
+                    transition: "color 0.1s", lineHeight: 1 }}>★</span>
+              ))}
+            </div>
+          )}
           {onEdit && (
             <button onClick={e => { e.stopPropagation(); onEdit(); }}
               style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "6px 14px",
@@ -880,6 +910,7 @@ function EntryCard({ entry, user, compact = false, onEdit, onTogglePrivate, isPr
                 }} />
             </label>
           )}
+          <PhotoStrip photos={entry.photos || []} inline />
         </div>
       )}
     </div>
@@ -935,9 +966,9 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
           target="_blank" rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
           style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: compact ? 15 : 17, fontWeight: 600, textDecoration: "none" }}
-          onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-          onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
-          {activity.name} ↗
+          onMouseEnter={e => { e.currentTarget.style.textDecoration = "underline"; e.currentTarget.querySelector('span').style.color = "#1a73e8"; }}
+          onMouseLeave={e => { e.currentTarget.style.textDecoration = "none"; e.currentTarget.querySelector('span').style.color = "#4285f4"; }}>
+          {activity.name} <span style={{ color: "#4285f4", fontSize: compact ? 12 : 13, fontWeight: 400 }}>↗</span>
         </a>
         <DifficultyBadge difficulty={activity.difficulty} />
       </div>
@@ -994,12 +1025,7 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
         </div>
       )}
 
-      {/* Photos display */}
-      {!compact && (activity.photos || []).length > 0 && (
-        <PhotoStrip photos={activity.photos} />
-      )}
-
-      {/* Edit / Private / Photo */}
+      {/* Edit / Private / Photo / Gallery */}
       {!compact && (onEdit || onAddPhoto) && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
           {onEdit && (
@@ -1033,6 +1059,7 @@ function ActivityCard({ activity, user, compact = false, onEdit, onTogglePrivate
                 }} />
             </label>
           )}
+          <PhotoStrip photos={activity.photos || []} inline />
         </div>
       )}
     </div>
@@ -1059,6 +1086,7 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [photos, setPhotos] = useState([]);
+  const locationBiasRef = useRef(null); // { lat, lon } from CitySearch
 
   const KNOWN_PLACES = {
     "pearl of siam": { name: "Pearl of Siam", city: "Aurora", state: "CO", country: "USA", cuisine: "Thai", type: "restaurant" },
@@ -1085,21 +1113,54 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
     "domo": { name: "Domo", city: "Denver", state: "CO", country: "USA", cuisine: "Japanese Country Food", type: "restaurant" },
   };
 
+  const nameDebounceRef = useRef(null);
+  const nameInputRef = useRef(null);
+  const [nameDropPos, setNameDropPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const OSM_TYPE_MAP = { restaurant: "restaurant", fast_food: "restaurant", food_court: "restaurant", bar: "brewery", pub: "brewery", brewery: "brewery", cafe: "cafe", coffee_shop: "cafe", park: "activity", nature_reserve: "activity", hiking: "activity", sports_centre: "activity", fitness_centre: "activity", attraction: "activity", viewpoint: "activity", museum: "activity" };
+
   const handleNameChange = (val) => {
     setForm(f => ({ ...f, name: val }));
-    if (val.length >= 2) {
-      const q = val.toLowerCase();
-      const matches = Object.entries(KNOWN_PLACES)
-        .filter(([key]) => key.includes(q))
-        .map(([, place]) => place)
-        .filter((v, i, arr) => arr.findIndex(x => x.name === v.name) === i)
-        .slice(0, 5);
-      setSuggestions(matches);
-      setShowSuggestions(true); // always show dropdown (has Google fallback)
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    }
+    clearTimeout(nameDebounceRef.current);
+    if (val.length < 2) { setSuggestions([]); setShowSuggestions(false); return; }
+    // Local matches first
+    const q = val.toLowerCase();
+    const localMatches = Object.entries(KNOWN_PLACES)
+      .filter(([key]) => key.includes(q))
+      .map(([, place]) => place)
+      .filter((v, i, arr) => arr.findIndex(x => x.name === v.name) === i)
+      .slice(0, 3);
+    if (localMatches.length > 0) { setSuggestions(localMatches); setShowSuggestions(true); }
+    // Then fetch from photon
+    nameDebounceRef.current = setTimeout(() => {
+      const bias = locationBiasRef.current;
+      const biasParam = bias ? `&lat=${bias.lat}&lon=${bias.lon}` : "";
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(val)}&limit=8${biasParam}`)
+        .then(r => r.json())
+        .then(data => {
+          const seen = new Set(localMatches.map(m => m.name.toLowerCase()));
+          const apiMatches = (data.features || [])
+            .filter(f => f.properties.name)
+            .map(f => {
+              const p = f.properties;
+              const type = OSM_TYPE_MAP[p.osm_value] || "restaurant";
+              const city = p.city || p.town || p.village || "";
+              const state = p.state || "";
+              const country = p.country || "";
+              return { name: p.name, city, state, country, type, cuisine: p.osm_value || "" };
+            })
+            .filter(r => { const k = r.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+            .slice(0, 6);
+          const all = [...localMatches, ...apiMatches];
+          setSuggestions(all);
+          setShowSuggestions(all.length > 0);
+          if (nameInputRef.current) {
+            const rect = nameInputRef.current.getBoundingClientRect();
+            setNameDropPos({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width });
+          }
+        })
+        .catch(() => {});
+    }, 350);
   };
 
   const selectSuggestion = (place) => {
@@ -1114,14 +1175,14 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
       <input type={type} value={form[field]}
         onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
         placeholder={placeholder}
-        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-          padding: "10px 12px", color: "#000", fontSize: 14,
+        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+          padding: "11px 12px", color: "#000", fontSize: 14,
           marginTop: 4, boxSizing: "border-box", outline: "none" }} />
     </div>
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#000", margin: 0, fontSize: 20, fontWeight: 700 }}>{prefill ? "Review & Log" : "Log a Place"}</h2>
@@ -1132,20 +1193,26 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
 
         <div style={{ height: 1, background: "#f0f0f0", marginBottom: 20 }} />
 
-        <div style={{ marginBottom: 14, position: "relative" }}>
+        <CitySearch onSelect={({ city, state, country, lat, lon }) => {
+          setForm(f => ({ ...f, city, state, country }));
+          locationBiasRef.current = { lat, lon };
+        }} />
+
+        <div style={{ marginBottom: 14 }}>
           <label style={{ color: "#666", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>Place Name</label>
-          <input value={form.name} onChange={e => handleNameChange(e.target.value)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+          <input ref={nameInputRef} value={form.name} onChange={e => handleNameChange(e.target.value)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             onFocus={() => form.name.length >= 2 && setShowSuggestions(true)}
             onKeyDown={e => e.key === "Escape" && setShowSuggestions(false)}
-            placeholder="Start typing a place name..."
-            style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+            placeholder="Search restaurant, café, park, trail…"
+            autoComplete="off"
+            style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
               padding: "11px 12px", color: "#000", fontSize: 14, marginTop: 4,
               boxSizing: "border-box", outline: "none" }} />
-          {form.name.length >= 2 && showSuggestions && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff",
-              border: "1px solid #efefef", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-              zIndex: 10, overflow: "hidden", marginTop: 2 }}>
+          {form.name.length >= 2 && showSuggestions && createPortal(
+            <div style={{ position: "absolute", top: nameDropPos.top + 4, left: nameDropPos.left, width: nameDropPos.width,
+              background: "#fff", border: "1px solid #efefef", borderRadius: 8,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 99999, overflow: "hidden" }}>
               {suggestions.map((s, i) => (
                 <div key={i} onMouseDown={() => selectSuggestion(s)}
                   style={{ padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #f5f5f5",
@@ -1155,32 +1222,29 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
                   <span style={{ fontSize: 18 }}>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[s.type] || "📍"}</span>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 500, color: "#000" }}>{s.name}</div>
-                    <div style={{ fontSize: 12, color: "#888" }}>{s.city}, {s.state} · {s.cuisine || s.type}</div>
+                    <div style={{ fontSize: 12, color: "#888" }}>{[s.city, s.state].filter(Boolean).join(", ")}{s.cuisine ? ` · ${s.cuisine}` : ""}</div>
                   </div>
                 </div>
               ))}
-              {/* Google Maps fallback */}
-              {form.name.length >= 2 && (
-                <a href={`https://www.google.com/maps/search/${encodeURIComponent(form.name)}`}
-                  target="_blank" rel="noopener noreferrer"
-                  onClick={() => setShowSuggestions(false)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-                    borderTop: suggestions.length > 0 ? "1px solid #f5f5f5" : "none",
-                    textDecoration: "none", background: "#fafafa" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f0f0f0"}
-                  onMouseLeave={e => e.currentTarget.style.background = "#fafafa"}>
-                  <span style={{ fontSize: 18 }}>🔍</span>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: "#000" }}>Search "{form.name}" on Google Maps</div>
-                    <div style={{ fontSize: 12, color: "#888" }}>Opens Google Maps to find the place</div>
-                  </div>
-                  <span style={{ marginLeft: "auto", fontSize: 12, color: "#aaa" }}>↗</span>
-                </a>
-              )}
-            </div>
+              <a href={`https://www.google.com/maps/search/${encodeURIComponent(form.name)}`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={() => setShowSuggestions(false)}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                  borderTop: suggestions.length > 0 ? "1px solid #f5f5f5" : "none",
+                  textDecoration: "none", background: "#fafafa" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f0f0f0"}
+                onMouseLeave={e => e.currentTarget.style.background = "#fafafa"}>
+                <span style={{ fontSize: 18 }}>🔍</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: "#000" }}>Search "{form.name}" on Google Maps</div>
+                  <div style={{ fontSize: 12, color: "#888" }}>Opens Google Maps to find the place</div>
+                </div>
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "#aaa" }}>↗</span>
+              </a>
+            </div>,
+            document.body
           )}
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>City</label>
@@ -1261,7 +1325,7 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
           {photos.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {photos.map((photo, i) => (
-                <div key={i} style={{ position: "relative" }}>
+                <div key={photo.slice(-20)} style={{ position: "relative" }}>
                   <img src={photo} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid #efefef" }} />
                   <button onClick={() => setPhotos(p => p.filter((_, idx) => idx !== i))}
                     style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%",
@@ -1317,6 +1381,177 @@ function AddEntryModal({ onClose, onSave, entries, prefill }) {
           Save to My Travels
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── LOCATION SEARCH (Log a Place) ──────────────────────────────────────────
+function CitySearch({ onSelect }) {
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  const fetchSuggestions = (q) => {
+    if (!q || q.length < 2) { setSuggestions([]); setOpen(false); return; }
+    setLoading(true);
+    fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&layer=city&layer=county&layer=state&layer=country`)
+      .then(r => r.json())
+      .then(data => {
+        const seen = new Set();
+        const results = (data.features || []).map(f => {
+          const p = f.properties;
+          const [lon, lat] = f.geometry.coordinates;
+          const city = p.name;
+          const state = p.state || "";
+          const country = p.country || "";
+          const label = [city, state, country].filter(Boolean).join(", ");
+          return { label, city, state, country, lat, lon };
+        }).filter(r => {
+          if (!r.label || seen.has(r.label)) return false;
+          seen.add(r.label); return true;
+        });
+        setSuggestions(results);
+        if (results.length > 0 && inputRef.current) {
+          const rect = inputRef.current.getBoundingClientRect();
+          setDropPos({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: rect.width });
+        }
+        setOpen(results.length > 0);
+      })
+      .catch(() => setSuggestions([]))
+      .finally(() => setLoading(false));
+  };
+
+  const handleChange = (e) => {
+    setQuery(e.target.value);
+    setSelected(false);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(e.target.value), 350);
+  };
+
+  const handleSelect = (item) => {
+    setQuery(item.label);
+    setSelected(true);
+    onSelect(item);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>City / Area <span style={{ color: "#bbb", fontWeight: 400 }}>— pick first to narrow place search</span></label>
+      <div style={{ position: "relative" }}>
+        <input ref={inputRef} value={query} onChange={handleChange}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
+          onFocus={() => suggestions.length > 0 && !selected && setOpen(true)}
+          placeholder="e.g. Denver, Tokyo, Paris…"
+          autoComplete="off"
+          style={{ width: "100%", background: selected ? "#f0fdf4" : "#f8f8f8",
+            border: `1px solid ${selected ? "#86efac" : "#efefef"}`, borderRadius: 8,
+            padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4,
+            boxSizing: "border-box", outline: "none" }}
+        />
+        {loading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#aaa" }}>...</span>}
+        {selected && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#22c55e" }}>✓</span>}
+      </div>
+      {open && suggestions.length > 0 && createPortal(
+        <div style={{ position: "absolute", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
+          background: "#fff", border: "1px solid #efefef", borderRadius: 8, zIndex: 99999,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflow: "hidden" }}>
+          {suggestions.map((s, i) => (
+            <div key={i} onMouseDown={() => handleSelect(s)}
+              style={{ padding: "10px 14px", fontSize: 13, color: "#222", cursor: "pointer",
+                borderBottom: i < suggestions.length - 1 ? "1px solid #f5f5f5" : "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f8f8f8"}
+              onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+              📍 {s.label}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ─── DESTINATION AUTOCOMPLETE ────────────────────────────────────────────────
+function DestinationAutocomplete({ value, onChange, onSelect, placeholder, style }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  const fetchSuggestions = (q) => {
+    if (!q || q.length < 2) { setSuggestions([]); setOpen(false); return; }
+    setLoading(true);
+    fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&layer=city&layer=state&layer=country`)
+      .then(r => r.json())
+      .then(data => {
+        const seen = new Set();
+        const results = (data.features || [])
+          .map(f => {
+            const p = f.properties;
+            const parts = [p.city || p.name];
+            if (p.state && p.state !== parts[0]) parts.push(p.state);
+            if (p.country && p.country !== parts[0]) parts.push(p.country);
+            return parts.filter(Boolean).join(", ");
+          })
+          .filter(label => { if (seen.has(label)) return false; seen.add(label); return true; });
+        setSuggestions(results);
+        if (results.length > 0 && inputRef.current) {
+          const r = inputRef.current.getBoundingClientRect();
+          setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: r.width });
+        }
+        setOpen(results.length > 0);
+      })
+      .catch(() => setSuggestions([]))
+      .finally(() => setLoading(false));
+  };
+
+  const handleChange = (e) => {
+    onChange(e.target.value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(e.target.value), 350);
+  };
+
+  const handleSelect = (label) => {
+    onChange(label);
+    onSelect && onSelect(label);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input ref={inputRef} value={value} onChange={handleChange}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        placeholder={placeholder || "City, country..."}
+        style={style}
+        autoComplete="off"
+      />
+      {loading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#aaa" }}>...</span>}
+      {open && suggestions.length > 0 && createPortal(
+        <div style={{ position: "absolute", top: dropPos.top + 4, left: dropPos.left, width: dropPos.width,
+          background: "#fff", border: "1px solid #efefef", borderRadius: 8, zIndex: 99999,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflow: "hidden" }}>
+          {suggestions.map((s, i) => (
+            <div key={i} onMouseDown={() => handleSelect(s)}
+              style={{ padding: "10px 14px", fontSize: 13, color: "#222", cursor: "pointer", borderBottom: i < suggestions.length - 1 ? "1px solid #f5f5f5" : "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f8f8f8"}
+              onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+              {s}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1491,14 +1726,15 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
     : [];
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: 24, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#000", margin: 0, fontSize: 20, fontWeight: 700 }}>
             {!mode ? "Plan a Trip" : mode === "quick" ? (step === 2 ? "Your Trip Plan 🗺" : "Quick Plan") : "Build a Trip"}
           </h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#aaa", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
+        <div style={{ height: 1, background: "#f0f0f0", marginBottom: 20 }} />
 
         {/* Mode selector */}
         {!mode && (
@@ -1508,7 +1744,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button onClick={() => setMode("quick")}
-                style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 12,
+                style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
                   padding: "16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 26, flexShrink: 0 }}>⚡</div>
                 <div>
@@ -1517,7 +1753,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                 </div>
               </button>
               <button onClick={() => setMode("manual")}
-                style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 12,
+                style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
                   padding: "16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 26, flexShrink: 0 }}>📝</div>
                 <div>
@@ -1540,7 +1776,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginBottom: 14 }}>
               <div>
                 <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Destination</label>
-                <input value={manualDestination} onChange={e => setManualDestination(e.target.value)}
+                <DestinationAutocomplete value={manualDestination} onChange={setManualDestination}
                   placeholder="e.g. Denver, Paris..."
                   style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
                     padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
@@ -1678,7 +1914,14 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                     <div key={p.id} style={{ background: "#f8f8f8", borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 16 }}>📍</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: "#000" }}>{p.name}</div>
+                        <a href={`https://www.google.com/maps/search/${encodeURIComponent(p.name + ' ' + (p.city || ''))}`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ fontSize: 14, fontWeight: 500, color: "#000", textDecoration: "none", display: "block" }}
+                          onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                          onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
+                          {p.name} <span style={{ color: "#4285f4", fontSize: 12, fontWeight: 400 }}>↗</span>
+                        </a>
                         <div style={{ fontSize: 12, color: "#888" }}>{p.city} · {p.category}</div>
                       </div>
                       <select onChange={ev => ev.target.value && addToSection(ev.target.value, {id: p.id, name: p.name, type: "activity", city: p.city, state: p.state, verdict: "must_go", cuisine: p.category})}
@@ -1856,16 +2099,17 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
             </p>
             <div style={{ marginBottom: 16 }}>
               <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>Destination</label>
-              <input value={prefs.destination} onChange={e => setPrefs(p => ({...p, destination: e.target.value}))}
+              <DestinationAutocomplete value={prefs.destination} onChange={v => setPrefs(p => ({...p, destination: v}))}
                 style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
                   padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4,
                   boxSizing: "border-box", outline: "none" }} />
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>Number of Days</label>
-              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                {[1,2,3,4,5,7].map(d => (
-                  <button key={d} onClick={() => {
+              <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                <input type="number" min={1} max={100} value={prefs.days}
+                  onChange={e => {
+                    const d = Math.min(100, Math.max(1, parseInt(e.target.value) || 1));
                     setPrefs(p => {
                       const updated = { ...p, days: d };
                       if (p.startDate) {
@@ -1876,13 +2120,9 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                       return updated;
                     });
                   }}
-                    style={{ background: prefs.days === d ? "#000" : "#f8f8f8",
-                      border: `1px solid ${prefs.days === d ? "#000" : "#efefef"}`,
-                      color: prefs.days === d ? "#fff" : "#555",
-                      borderRadius: 6, padding: "7px 12px", cursor: "pointer", fontSize: 13 }}>
-                    {d}
-                  </button>
-                ))}
+                  style={{ width: 80, background: "#f8f8f8", border: "1px solid #efefef",
+                    borderRadius: 6, padding: "7px 10px", fontSize: 13, outline: "none", textAlign: "center", color: "#000" }}
+                />
               </div>
             </div>
             {/* Start + End date */}
@@ -2056,31 +2296,22 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
 // ─── PROFILE VIEW ────────────────────────────────────────────────────────────
 function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
   const userEntries = entries.filter(e => e.userId === user.id);
-  const mustGo = userEntries.filter(e => e.verdict === "must_go");
   const cities = [...new Set(userEntries.map(e => e.city).filter(Boolean))];
   const [cityFilter, setCityFilter] = useState(null);
   const [profileSearch, setProfileSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [verdictFilter, setVerdictFilter] = useState("all");
 
-  const typeChips = [
-    { id: "all", label: "All" },
-    { id: "food", label: "🍽 Food" },
-    { id: "coffee", label: "☕ Coffee" },
-    { id: "brewery", label: "🍺 Brewery" },
-    { id: "activities", label: "🏔 Activities" },
+  const verdictTabs = [
+    { id: "all",      label: "All",      color: "#555" },
+    { id: "must_go",  label: "Must Go",  color: "#E8873A" },
+    { id: "liked",    label: "Liked",    color: "#16a34a" },
+    { id: "meh",      label: "Meh",      color: "#d97706" },
+    { id: "avoid",    label: "Avoid",    color: "#ef4444" },
   ];
-  const typeMatch = (e) => {
-    if (typeFilter === "all") return true;
-    if (typeFilter === "food") return ["restaurant"].includes(e.type);
-    if (typeFilter === "coffee") return e.type === "cafe";
-    if (typeFilter === "brewery") return e.type === "brewery";
-    if (typeFilter === "activities") return ["activity","hiking","outdoor","scenic","kids"].includes(e.type);
-    return true;
-  };
 
-  const visibleMustGo = mustGo.filter(e => {
+  const visibleEntries = userEntries.filter(e => {
+    if (verdictFilter !== "all" && e.verdict !== verdictFilter) return false;
     if (cityFilter && e.city !== cityFilter) return false;
-    if (!typeMatch(e)) return false;
     if (profileSearch.trim()) {
       const q = profileSearch.toLowerCase();
       return (e.name||"").toLowerCase().includes(q) || (e.city||"").toLowerCase().includes(q)
@@ -2088,17 +2319,6 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
     }
     return true;
   });
-
-  const chipBtn = (val, label) => (
-    <button key={val} onClick={() => setTypeFilter(val)}
-      style={{ background: typeFilter === val ? "#000" : "#f8f8f8",
-        border: `1px solid ${typeFilter === val ? "#000" : "#e8e8e8"}`,
-        color: typeFilter === val ? "#fff" : "#555",
-        borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer",
-        whiteSpace: "nowrap", flexShrink: 0, fontWeight: typeFilter === val ? 600 : 400 }}>
-      {label}
-    </button>
-  );
 
   return (
     <div>
@@ -2132,17 +2352,22 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
           </div>
         )}
         <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
-          {[["Trips", user.tripsCount],["Countries", user.countriesCount],["Cities", user.citiesCount]].map(([l,v]) => (
-            <div key={l}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#000" }}>{v}</div>
-              <div style={{ fontSize: 11, color: "#aaa", marginTop: 1 }}>{l}</div>
+          {[
+            { label: "Logs", value: userEntries.length, action: () => { setVerdictFilter("all"); setCityFilter(null); }, active: verdictFilter === "all" && !cityFilter },
+            { label: "Must Go", value: userEntries.filter(e => e.verdict === "must_go").length, action: () => setVerdictFilter(verdictFilter === "must_go" ? "all" : "must_go"), active: verdictFilter === "must_go" },
+            { label: "Cities", value: cities.length, action: () => setCityFilter(null), active: !!cityFilter },
+            { label: "Trips", value: user.tripsCount, action: null, active: false },
+          ].map(({ label, value, action, active }) => (
+            <div key={label} onClick={action || undefined} style={{ cursor: action ? "pointer" : "default" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#000" }}>{value}</div>
+              <div style={{ fontSize: 11, color: active ? "#000" : "#aaa", fontWeight: active ? 700 : 400, borderBottom: active ? "2px solid #000" : "2px solid transparent", paddingBottom: 1, marginTop: 1, transition: "all 0.15s" }}>{label}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Search */}
-      <div style={{ position: "relative", marginBottom: 10 }}>
+      <div style={{ position: "relative", marginBottom: 12 }}>
         <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }}>🔍</span>
         <input value={profileSearch} onChange={e => setProfileSearch(e.target.value)}
           placeholder="Search places, city, cuisine..."
@@ -2152,9 +2377,27 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
           style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#aaa", cursor: "pointer", fontSize: 16 }}>×</button>}
       </div>
 
-      {/* Type filter chips */}
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 16 }}>
-        {typeChips.map(c => chipBtn(c.id, c.label))}
+      {/* Verdict filter tabs */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 14 }}>
+        {verdictTabs.map(v => {
+          const count = v.id === "all" ? userEntries.length : userEntries.filter(e => e.verdict === v.id).length;
+          const active = verdictFilter === v.id;
+          return (
+            <button key={v.id} onClick={() => setVerdictFilter(v.id)}
+              style={{ background: active ? v.color : "#f8f8f8",
+                border: `1.5px solid ${active ? v.color : "#e8e8e8"}`,
+                color: active ? "#fff" : v.color === "#555" ? "#555" : v.color,
+                borderRadius: 20, padding: "6px 14px", fontSize: 12, cursor: "pointer",
+                whiteSpace: "nowrap", flexShrink: 0, fontWeight: active ? 700 : 500,
+                display: "flex", alignItems: "center", gap: 5 }}>
+              {v.label}
+              <span style={{ background: active ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.07)",
+                borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* City pills */}
@@ -2185,17 +2428,17 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
       )}
 
       <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
-        Must-Go Picks · {visibleMustGo.length} {cityFilter ? `in ${cityFilter}` : ""}
+        {visibleEntries.length} {verdictFilter === "all" ? "Logs" : verdictFilter.replace("_", " ")} {cityFilter ? `in ${cityFilter}` : ""}
       </div>
 
-      {visibleMustGo.length === 0 ? (
+      {visibleEntries.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px 20px", background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14 }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
-          <div style={{ fontSize: 14, color: "#888" }}>No picks match your filters</div>
+          <div style={{ fontSize: 14, color: "#888" }}>No logs match your filters</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {visibleMustGo.map(e => (
+          {visibleEntries.map(e => (
             <div key={e.id} style={{ position: "relative" }}>
               <EntryCard entry={e} />
               {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
@@ -2347,7 +2590,6 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
             const entry = [...MOCK_ENTRIES, ...entries].find(e => e.id === act.entryId);
             if (!user) return null;
             const accentColor = ACTION_COLOR[act.type] || "#666";
-            const _isFirst = idx === 0 || filtered[idx-1]?.userId !== act.userId;
 
             return (
               <div key={act.id}>
@@ -2407,7 +2649,14 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
                         borderLeft: `3px solid ${accentColor}66` }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14 }}>{TYPE_ICON[entry.type]}</span>
-                          <span style={{ color: "#f5f0e8", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15 }}>{entry.name}</span>
+                          <a href={`https://www.google.com/maps/search/${encodeURIComponent(entry.name + ' ' + (entry.city || ''))}`}
+                            target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            style={{ color: "#f5f0e8", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15, fontWeight: 600, textDecoration: "none" }}
+                            onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                            onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
+                            {entry.name} <span style={{ color: "#4285f4", fontSize: 12, fontWeight: 400 }}>↗</span>
+                          </a>
                           <VerdictBadge verdict={entry.verdict} />
                         </div>
                         <div style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginTop: 4 }}>
@@ -2722,19 +2971,21 @@ function AddDiaryModal({ onClose, onSave, entries }) {
       <input type={type} value={form[field]}
         onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
         placeholder={placeholder}
-        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-          padding: "10px 12px", color: "#000", fontSize: 14,
+        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+          padding: "11px 12px", color: "#000", fontSize: 14,
           marginTop: 4, boxSizing: "border-box", outline: "none" }} />
     </div>
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h2 style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 22 }}>📖 New Diary Entry</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer" }}>×</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 20, fontWeight: 700 }}>📖 New Diary Entry</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#aaa", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
+
+        <div style={{ height: 1, background: "#f0f0f0", marginBottom: 20 }} />
 
         {inp("title", "Trip Title", "e.g. Summit County Weekend")}
 
@@ -2766,23 +3017,23 @@ function AddDiaryModal({ onClose, onSave, entries }) {
         <div style={{ marginBottom: 14 }}>
           <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Link Places from My Logs</label>
           <button onClick={() => setShowLinkPicker(!showLinkPicker)}
-            style={{ background: "#111", border: "1px solid #333", borderRadius: 8, padding: "8px 14px",
+            style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "8px 14px",
               color: "#000", fontSize: 12, cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", width: "100%" }}>
             {showLinkPicker ? "▴ Hide" : `▾ Select places (${form.linkedEntries.length} linked)`}
           </button>
           {showLinkPicker && (
-            <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 8, padding: 8 }}>
+            <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: 8 }}>
               {myPlaces.map(p => {
                 const linked = form.linkedEntries.includes(p.id);
                 return (
                   <div key={p.id} onClick={() => toggleLink(p.id)}
                     style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", cursor: "pointer", borderRadius: 6,
-                      background: linked ? "#e8c84a11" : "transparent", marginBottom: 2 }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${linked ? "#e8c84a" : "#333"}`,
-                      background: linked ? "#e8c84a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 10, color: "#0a0a0a", flexShrink: 0 }}>{linked ? "✓" : ""}</span>
-                    <span style={{ color: "#f5f0e8", fontSize: 13 }}>{p.name}</span>
-                    <span style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>{p.city}</span>
+                      background: linked ? "#f0f0f0" : "transparent", marginBottom: 2 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${linked ? "#000" : "#ccc"}`,
+                      background: linked ? "#000" : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, color: "#fff", flexShrink: 0 }}>{linked ? "✓" : ""}</span>
+                    <span style={{ color: "#000", fontSize: 13 }}>{p.name}</span>
+                    <span style={{ color: "#888", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>{p.city}</span>
                   </div>
                 );
               })}
@@ -2793,9 +3044,9 @@ function AddDiaryModal({ onClose, onSave, entries }) {
         {inp("tags", "Tags", "ski trip, date night, solo (comma separated)")}
 
         {/* Photos placeholder */}
-        <div style={{ marginBottom: 18, background: "#111", border: "1px dashed #2a2a2a", borderRadius: 8, padding: "14px", textAlign: "center" }}>
+        <div style={{ marginBottom: 18, background: "#f8f8f8", border: "1px dashed #ddd", borderRadius: 10, padding: "14px", textAlign: "center" }}>
           <div style={{ fontSize: 18, marginBottom: 4 }}>📸</div>
-          <div style={{ color: "#444", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>PHOTO UPLOAD COMING SOON</div>
+          <div style={{ color: "#aaa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>PHOTO UPLOAD COMING SOON</div>
         </div>
 
         <button onClick={() => {
@@ -2846,36 +3097,38 @@ function EditEntryModal({ entry, onClose, onSave }) {
       <input type={type} value={form[field]}
         onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
         placeholder={placeholder}
-        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-          padding: "10px 12px", color: "#000", fontSize: 14,
+        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+          padding: "11px 12px", color: "#000", fontSize: 14,
           marginTop: 4, boxSizing: "border-box", outline: "none" }} />
     </div>
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px", width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", margin: 0, fontSize: 20, fontWeight: 700 }}>Edit Log</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 22, cursor: "pointer" }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#aaa", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
+
+        <div style={{ height: 1, background: "#f0f0f0", marginBottom: 20 }} />
 
         {inp("name", "Place Name", "e.g. Rioja")}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>City</label>
             <input value={form.city} onChange={e => setForm(f => ({...f, city: e.target.value}))}
-              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "11px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>State</label>
             <input value={form.state} onChange={e => setForm(f => ({...f, state: e.target.value}))}
-              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "11px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
           <div>
             <label style={{ color: "#666", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Country</label>
             <input value={form.country} onChange={e => setForm(f => ({...f, country: e.target.value}))}
-              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "10px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
+              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10, padding: "11px 12px", color: "#000", fontSize: 14, marginTop: 4, boxSizing: "border-box", outline: "none", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }} />
           </div>
         </div>
 
@@ -2939,7 +3192,7 @@ function EditEntryModal({ entry, onClose, onSave }) {
           {photos.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {photos.map((photo, i) => (
-                <div key={i} style={{ position: "relative" }}>
+                <div key={photo.slice(-20)} style={{ position: "relative" }}>
                   <img src={photo} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid #efefef" }} />
                   <button onClick={() => setPhotos(p => p.filter((_, idx) => idx !== i))}
                     style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%",
@@ -3458,11 +3711,11 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
   const previewNames = allEntries.slice(0, 3).map(e => e.name);
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20,
-      boxShadow: "0 1px 6px rgba(0,0,0,0.06)", transition: "box-shadow 0.2s, transform 0.2s",
+    <div style={{ background: "#fff", border: "1px solid #e8e4dc", borderRadius: 20,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.07)", transition: "box-shadow 0.2s, transform 0.2s",
       overflow: "hidden" }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 28px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 6px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "none"; }}>
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.12)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.07)"; e.currentTarget.style.transform = "none"; }}>
 
       {/* ── HEADER ── */}
       <div onClick={() => setExpanded(!expanded)} style={{ padding: "20px 20px 16px", cursor: "pointer" }}>
@@ -3486,14 +3739,14 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
             {!expanded && previewNames.length > 0 && (
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
                 {previewNames.map((name, i) => (
-                  <span key={i} style={{ background: "#f5f5f5", borderRadius: 20,
-                    padding: "3px 10px", fontSize: 11, color: "#888" }}>
+                  <span key={name + '-' + i} style={{ background: "#f5f3ef", border: "1px solid #e8e4dc",
+                    borderRadius: 20, padding: "3px 11px", fontSize: 11, color: "#666" }}>
                     {name}
                   </span>
                 ))}
                 {allEntries.length > 3 && (
-                  <span style={{ background: "#f5f5f5", borderRadius: 20,
-                    padding: "3px 10px", fontSize: 11, color: "#bbb" }}>
+                  <span style={{ background: "#f5f3ef", border: "1px solid #e8e4dc",
+                    borderRadius: 20, padding: "3px 11px", fontSize: 11, color: "#aaa" }}>
                     +{allEntries.length - 3} more
                   </span>
                 )}
@@ -3627,7 +3880,7 @@ function SharedTripCard({ trip, sharer, onImportToLogs }) {
 }
 
 // ─── TRIP CARD COMPONENT ─────────────────────────────────────────────────────
-function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onEdit, onShare, focusSection, onFocusHandled }) {
+function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onEdit, onShare, focusSection, onFocusHandled, onViewProfile }) {
   const cardRef = useRef(null);
   const [expanded, setExpanded] = useState(!!focusSection);
   const [editing, setEditing] = useState(false);
@@ -3636,6 +3889,7 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
   const [regenError, setRegenError] = useState("");
   const [showShareDropdown, setShowShareDropdown] = useState(false);
   const [confirmingComplete, setConfirmingComplete] = useState(false);
+  const [completePhotoStep, setCompletePhotoStep] = useState(false); // after confirm → photo prompt
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showInviteDropdown, setShowInviteDropdown] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
@@ -3644,7 +3898,16 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
   const [newPackItem, setNewPackItem] = useState("");
   const [showPackList, setShowPackList] = useState(focusSection === "packList");
   const [showBookRemind, setShowBookRemind] = useState(focusSection === "bookRemind");
+  const [showIdeasNote, setShowIdeasNote] = useState(focusSection === "ideasNote");
+  const [newIdeaText, setNewIdeaText] = useState("");
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState(new Set());
+  const toggleDayCollapse = idx => setCollapsedDays(prev => {
+    const s = new Set(prev); s.has(idx) ? s.delete(idx) : s.add(idx); return s;
+  });
+  const allDaysCount = trip.plan?.days?.length || 0;
+  const allCollapsed = collapsedDays.size === allDaysCount && allDaysCount > 0;
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [overflowMenuPos, setOverflowMenuPos] = useState(null);
   const overflowBtnRef = useRef(null);
@@ -3660,7 +3923,7 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
       onFocusHandled && onFocusHandled();
     }, 100);
     return () => clearTimeout(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusSection, onFocusHandled]);
 
   useEffect(() => {
     if (!showShareDropdown) return;
@@ -3805,7 +4068,6 @@ Return ONLY valid JSON, no explanation, no markdown fences:
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
-  const allEntries = entries ? entries.filter(e => e.userId !== "u1" || e.isActivity) : [];
 
 
   // Progress counts
@@ -3831,88 +4093,215 @@ Return ONLY valid JSON, no explanation, no markdown fences:
     </div>
   );
 
+  const destSlug = (trip.destination || "travel").toLowerCase().replace(/[^a-z0-9]/g, '');
+  const heroImg = `https://picsum.photos/seed/${destSlug}/800/300`;
+
   return (
-    <div ref={cardRef} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20,
-      boxShadow: "0 1px 6px rgba(0,0,0,0.06)", transition: "box-shadow 0.2s, transform 0.2s",
+    <div ref={cardRef} style={{ background: "#fff", border: "1px solid #e8e4dc", borderRadius: 20,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.07)", transition: "box-shadow 0.2s, transform 0.2s",
       overflow: "hidden" }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 28px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 6px rgba(0,0,0,0.06)"; e.currentTarget.style.transform = "none"; }}>
-      {/* ── HEADER ── */}
-      <div onClick={() => setExpanded(!expanded)} style={{ padding: "20px 20px 16px", cursor: "pointer" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.13)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.07)"; e.currentTarget.style.transform = "none"; }}>
 
-          {/* Left: title + meta */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 19, fontWeight: 700, color: "#111", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
-              {trip.destination}
+      {/* ── ACTIVE TRIP: Hero image header ── */}
+      {!past && (
+        <>
+          <div style={{ position: "relative", height: 180, overflow: "hidden", cursor: "pointer" }}
+            onClick={() => setExpanded(!expanded)}>
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${heroImg})`,
+              backgroundSize: "cover", backgroundPosition: "center" }} />
+            <div style={{ position: "absolute", inset: 0,
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.65) 100%)" }} />
+            {/* Top-right: Live badge + overflow + chevron */}
+            <div style={{ position: "absolute", top: 13, right: 14, display: "flex", gap: 7, alignItems: "center" }}>
+              <span style={{ background: "rgba(34,197,94,0.88)", backdropFilter: "blur(4px)",
+                color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "4px 10px",
+                display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block" }} />
+                Live
+              </span>
+              <button ref={overflowBtnRef} onClick={openOverflowMenu}
+                style={{ width: 30, height: 30, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)",
+                  border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8, cursor: "pointer",
+                  color: "#fff", fontSize: 15, letterSpacing: "2px", lineHeight: 1, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center" }}>
+                ···
+              </button>
+              <div style={{ width: 26, height: 26, display: "flex", alignItems: "center",
+                justifyContent: "center", color: "rgba(255,255,255,0.85)", fontSize: 14,
+                transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, color: "#999" }}>{trip.days} day{trip.days !== 1 ? "s" : ""}</span>
-              <span style={{ color: "#ddd" }}>·</span>
-              <span style={{ fontSize: 12, color: "#999" }}>{trip.kids ? "Family" : "Adults"}</span>
-              <span style={{ color: "#ddd" }}>·</span>
-              <span style={{ fontSize: 12, color: "#999" }}>{dateStr}</span>
-              {past && <span style={{ fontSize: 10, background: "#f4f4f4", color: "#aaa", borderRadius: 20, padding: "2px 8px", fontWeight: 600, letterSpacing: "0.04em" }}>PAST</span>}
-            </div>
-            {/* Mini progress strip (collapsed state) */}
-            {!expanded && totalPlaces > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-                <div style={{ flex: 1, maxWidth: 120, height: 3, background: "#f0f0f0", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${(visitedCount / totalPlaces) * 100}%`,
-                    background: visitedCount === totalPlaces ? "#22c55e" : "#111", borderRadius: 2,
-                    transition: "width 0.4s" }} />
-                </div>
-                <span style={{ fontSize: 11, color: "#bbb" }}>{visitedCount}/{totalPlaces}</span>
+            {/* Bottom: destination + meta */}
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "14px 18px" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.3px",
+                lineHeight: 1.2, textShadow: "0 1px 6px rgba(0,0,0,0.4)" }}>
+                {trip.destination}
               </div>
-            )}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.88)" }}>
+                  📅 {trip.days} day{trip.days !== 1 ? "s" : ""}
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.35)" }}>·</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.88)" }}>
+                  {trip.kids ? "👨‍👩‍👧 Family" : "🧑 Adults"}
+                </span>
+                {trip.startDate && <>
+                  <span style={{ color: "rgba(255,255,255,0.35)" }}>·</span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.88)" }}>{dateStr}</span>
+                </>}
+              </div>
+              {!expanded && totalPlaces > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <div style={{ flex: 1, maxWidth: 120, height: 3, background: "rgba(255,255,255,0.25)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${(visitedCount / totalPlaces) * 100}%`,
+                      background: visitedCount === totalPlaces ? "#4ade80" : "#fff", borderRadius: 2, transition: "width 0.4s" }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{visitedCount}/{totalPlaces}</span>
+                </div>
+              )}
+            </div>
           </div>
+          {/* Collaborators strip — clickable profile links */}
+          {(trip.invitedFriends || []).length > 0 && (
+            <div style={{ padding: "10px 18px", borderBottom: "1px solid #f0f0f0",
+              background: "#fafaf8" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "#aaa", letterSpacing: "0.05em",
+                textTransform: "uppercase", marginBottom: 7 }}>
+                Collaborators
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {(trip.invitedFriends || []).map(uid => {
+                  const u = allUsers?.find(x => x.id === uid);
+                  return u ? (
+                    <button key={uid}
+                      onClick={e => { e.stopPropagation(); onViewProfile && onViewProfile(uid); }}
+                      title={`View ${u.name}'s profile`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                        background: "#fff", border: "1px solid #e8e4dc", borderRadius: 20,
+                        padding: "4px 10px 4px 6px", cursor: "pointer",
+                        transition: "background 0.15s, border-color 0.15s" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "#f5f3ef"; e.currentTarget.style.borderColor = "#c8c4bc"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e8e4dc"; }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#e8f0fe",
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13,
+                        flexShrink: 0 }}>
+                        {u.avatar}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "#333" }}>
+                        {u.name.split(" ")[0]}
+                      </span>
+                      <span style={{ fontSize: 11, color: "#aaa" }}>@{u.username}</span>
+                    </button>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
+          {/* Suggestions from collaborators */}
+          {(trip.collaboratorSuggestions || []).length > 0 && (
+            <div style={{ padding: "10px 18px", borderBottom: "1px solid #f0f0f0", background: "#fffdf8" }}>
+              <div style={{ fontSize: 11, color: "#888", fontWeight: 600, marginBottom: 8 }}>
+                💡 Suggestions from your group
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(trip.collaboratorSuggestions || []).map(s => {
+                  const suggester = allUsers?.find(x => x.id === s.userId);
+                  return (
+                    <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8,
+                      background: "#fff", border: "1px solid #efefef", borderRadius: 10,
+                      padding: "8px 12px" }}>
+                      <span style={{ fontSize: 15 }}>{suggester?.avatar || "👤"}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#000" }}>{s.name}</div>
+                        <div style={{ fontSize: 10, color: "#888" }}>{suggester?.name?.split(" ")[0]} · Day {s.dayIdx + 1}</div>
+                      </div>
+                      <button onClick={() => {
+                        const updated = { ...trip };
+                        const days = [...(updated.plan?.days || [])];
+                        if (days[s.dayIdx]) {
+                          days[s.dayIdx] = { ...days[s.dayIdx], entries: [...(days[s.dayIdx].entries || []),
+                            { id: "sg_" + Date.now(), name: s.name, type: s.type || "restaurant", city: s.city, state: s.state, verdict: "must_go" }] };
+                        }
+                        updated.plan = { ...updated.plan, days };
+                        updated.collaboratorSuggestions = (trip.collaboratorSuggestions || []).filter(x => x.id !== s.id);
+                        onUpdate && onUpdate(updated);
+                      }} style={{ background: "#22c55e", border: "none", borderRadius: 8, padding: "4px 10px",
+                        fontSize: 11, color: "#fff", cursor: "pointer", fontWeight: 600 }}>
+                        Add ✓
+                      </button>
+                      <button onClick={() => onUpdate && onUpdate({ ...trip,
+                        collaboratorSuggestions: (trip.collaboratorSuggestions || []).filter(x => x.id !== s.id) })}
+                        style={{ background: "none", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
-          {/* Right: ⋯ menu + chevron */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
-            {/* ⋯ overflow button */}
-            <button ref={overflowBtnRef} onClick={openOverflowMenu}
-              style={{ width: 34, height: 34, background: showOverflowMenu ? "#f2f2f2" : "transparent",
-                border: "1px solid #e8e8e8", borderRadius: 10, cursor: "pointer", fontSize: 16,
-                color: "#555", display: "flex", alignItems: "center", justifyContent: "center",
-                letterSpacing: "2px", lineHeight: 1, fontWeight: 700 }}>
-              ···
-            </button>
-            {/* Chevron */}
-            <div style={{ width: 28, height: 28, display: "flex", alignItems: "center",
-              justifyContent: "center", color: "#ccc", fontSize: 12,
-              transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</div>
+      {/* ── PAST TRIP: Thumbnail + text layout ── */}
+      {past && (
+        <div onClick={() => setExpanded(!expanded)} style={{ display: "flex", cursor: "pointer" }}>
+          <div style={{ width: 88, flexShrink: 0, minHeight: 100,
+            backgroundImage: `url(${heroImg})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+          <div style={{ flex: 1, padding: "14px 14px", minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: "#111", letterSpacing: "-0.2px", lineHeight: 1.2 }}>
+                  {trip.destination}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: "#999" }}>{trip.days} day{trip.days !== 1 ? "s" : ""}</span>
+                  <span style={{ color: "#ddd" }}>·</span>
+                  <span style={{ fontSize: 11, color: "#999" }}>{trip.kids ? "Family" : "Adults"}</span>
+                  <span style={{ color: "#ddd" }}>·</span>
+                  <span style={{ fontSize: 11, color: "#999" }}>{dateStr}</span>
+                  <span style={{ fontSize: 10, background: "#f4f4f4", color: "#aaa", borderRadius: 20,
+                    padding: "2px 8px", fontWeight: 600, letterSpacing: "0.04em" }}>PAST</span>
+                </div>
+                {totalPlaces > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <div style={{ flex: 1, maxWidth: 100, height: 4, background: "#f0f0f0", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${(visitedCount / totalPlaces) * 100}%`,
+                        background: "#4ade80", borderRadius: 2, transition: "width 0.4s" }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: "#bbb" }}>{visitedCount}/{totalPlaces}</span>
+                  </div>
+                )}
+                {(trip.sharedWith || []).length > 0 && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                    {trip.sharedWith.slice(0, 3).map(uid => {
+                      const u = (allUsers || []).find(x => x.id === uid);
+                      return u ? (
+                        <span key={uid} style={{ background: "#f7f7f7", border: "1px solid #efefef",
+                          borderRadius: 20, padding: "2px 8px", fontSize: 10, color: "#666" }}>
+                          {u.avatar} {u.name.split(" ")[0]}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                <button ref={overflowBtnRef} onClick={openOverflowMenu}
+                  style={{ width: 30, height: 30, background: showOverflowMenu ? "#f2f2f2" : "transparent",
+                    border: "1px solid #e8e8e8", borderRadius: 8, cursor: "pointer", fontSize: 14,
+                    color: "#777", display: "flex", alignItems: "center", justifyContent: "center",
+                    letterSpacing: "2px", lineHeight: 1, fontWeight: 700 }}>
+                  ···
+                </button>
+                <div style={{ width: 26, height: 26, display: "flex", alignItems: "center",
+                  justifyContent: "center", color: "#ccc", fontSize: 12,
+                  transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</div>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Invited friends chips */}
-        {!past && (trip.invitedFriends || []).length > 0 && (
-          <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
-            {trip.invitedFriends.map(uid => {
-              const u = allUsers?.find(x => x.id === uid);
-              return u ? (
-                <span key={uid} style={{ background: "#f7f7f7", border: "1px solid #efefef",
-                  borderRadius: 20, padding: "3px 10px", fontSize: 11, color: "#666" }}>
-                  {u.avatar} {u.name.split(" ")[0]}
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
-        {/* Shared with chips */}
-        {past && (trip.sharedWith || []).length > 0 && (
-          <div style={{ display: "flex", gap: 5, marginTop: 12, flexWrap: "wrap" }}>
-            {trip.sharedWith.map(uid => {
-              const u = (allUsers || []).find(x => x.id === uid);
-              return u ? (
-                <span key={uid} style={{ background: "#f7f7f7", border: "1px solid #efefef",
-                  borderRadius: 20, padding: "3px 10px", fontSize: 11, color: "#666" }}>
-                  {u.avatar} {u.name.split(" ")[0]}
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ── INVITE PANEL (inline, triggered from ⋯) ── */}
       {showInviteDropdown && (
@@ -4039,9 +4428,9 @@ Return ONLY valid JSON, no explanation, no markdown fences:
             </div>
           )}
 
-          {/* Collapsed utility sections */}
-          {!past && (
-            <div style={{ padding: "12px 20px", display: "flex", gap: 8, borderBottom: "1px solid #f5f5f5", flexWrap: "wrap" }}>
+          {/* Utility sections */}
+          <div style={{ padding: "12px 20px", display: "flex", gap: 8, borderBottom: "1px solid #f5f5f5", flexWrap: "wrap" }}>
+            {!past && <>
               <button onClick={e => { e.stopPropagation(); setShowBookRemind(v => !v); }}
                 style={{ display: "flex", alignItems: "center", gap: 6, background: showBookRemind ? "#111" : "#f5f5f5",
                   border: "none", borderRadius: 10, padding: "7px 13px", cursor: "pointer",
@@ -4066,8 +4455,20 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                   </span>
                 )}
               </button>
-            </div>
-          )}
+            </>}
+            <button onClick={e => { e.stopPropagation(); setShowIdeasNote(v => !v); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: showIdeasNote ? "#111" : "#f5f5f5",
+                border: "none", borderRadius: 10, padding: "7px 13px", cursor: "pointer",
+                fontSize: 12, fontWeight: 500, color: showIdeasNote ? "#fff" : "#555", transition: "all 0.15s" }}>
+              📝 Notes
+              {(trip.ideasNotes || []).length > 0 && (
+                <span style={{ background: showIdeasNote ? "rgba(255,255,255,0.25)" : "#ddd", borderRadius: 20,
+                  padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>
+                  {(trip.ideasNotes || []).length}
+                </span>
+              )}
+            </button>
+          </div>
 
           {/* Book & Reserve panel */}
           {showBookRemind && !past && (
@@ -4124,7 +4525,34 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                     style={{ background: "none", border: "none", color: "#ddd", cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              {/* Template picker */}
+              <button onClick={() => setShowTemplatePicker(v => !v)}
+                style={{ background: showTemplatePicker ? "#000" : "#f0f0f0", border: "none", borderRadius: 8,
+                  padding: "6px 12px", fontSize: 11, color: showTemplatePicker ? "#fff" : "#555",
+                  cursor: "pointer", fontWeight: 600, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                📋 Use Template {showTemplatePicker ? "▲" : "▼"}
+              </button>
+              {showTemplatePicker && (
+                <div style={{ background: "#fff", border: "1px solid #e8e8e8", borderRadius: 12,
+                  padding: "12px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#aaa", marginBottom: 4 }}>Choose a template — items will be added to your list</div>
+                  {Object.entries(PACK_LIST_TEMPLATES).map(([label, items]) => (
+                    <button key={label} onClick={() => {
+                      const existing = (trip.packList || []).map(x => x.text.toLowerCase());
+                      const newItems = items.filter(i => !existing.includes(i.toLowerCase()))
+                        .map(text => ({ id: "p_" + Date.now() + "_" + Math.random(), text, packed: false }));
+                      if (newItems.length) onUpdate && onUpdate({ ...trip, packList: [...(trip.packList || []), ...newItems] });
+                      setShowTemplatePicker(false);
+                    }} style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
+                      padding: "8px 12px", fontSize: 12, color: "#333", cursor: "pointer",
+                      textAlign: "left", fontWeight: 500, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>{label}</span>
+                      <span style={{ fontSize: 11, color: "#aaa" }}>{items.length} items →</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
                 <input value={newPackItem} onChange={e => setNewPackItem(e.target.value)}
                   placeholder="e.g. Passport, sunscreen, hiking boots…"
                   onKeyDown={e => {
@@ -4145,39 +4573,98 @@ Return ONLY valid JSON, no explanation, no markdown fences:
             </div>
           )}
 
+          {/* Notes panel */}
+          {showIdeasNote && (
+            <div onClick={e => e.stopPropagation()}
+              style={{ padding: "12px 20px 16px", borderBottom: "1px solid #f5f5f5", background: "#fafafa" }}>
+              <div style={{ fontSize: 11, color: "#aaa", marginBottom: 10 }}>
+                Jot down places, restaurants, or activities you want to explore — assign them to a day later.
+              </div>
+              {(trip.ideasNotes || []).length === 0 && (
+                <div style={{ fontSize: 12, color: "#bbb", fontStyle: "italic", marginBottom: 8 }}>No ideas yet</div>
+              )}
+              {(trip.ideasNotes || []).map(idea => (
+                <div key={idea.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6,
+                  background: "#fff", borderRadius: 10, padding: "9px 12px", border: "1px solid #f0f0f0" }}>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>💡</span>
+                  <div style={{ flex: 1, fontSize: 13, color: "#222" }}>{idea.text}</div>
+                  <button onClick={() => onUpdate && onUpdate({ ...trip, ideasNotes: (trip.ideasNotes || []).filter(x => x.id !== idea.id) })}
+                    style={{ background: "none", border: "none", color: "#ccc", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <input value={newIdeaText} onChange={e => setNewIdeaText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newIdeaText.trim()) {
+                      onUpdate && onUpdate({ ...trip, ideasNotes: [...(trip.ideasNotes || []), { id: "n_" + Date.now(), text: newIdeaText.trim() }] });
+                      setNewIdeaText("");
+                    }
+                  }}
+                  placeholder="e.g. Try the local markets, visit old town…"
+                  style={{ flex: 1, background: "#fff", border: "1px solid #e8e8e8", borderRadius: 8,
+                    padding: "8px 12px", fontSize: 12, color: "#222", outline: "none" }} />
+                <button onClick={() => {
+                  if (!newIdeaText.trim()) return;
+                  onUpdate && onUpdate({ ...trip, ideasNotes: [...(trip.ideasNotes || []), { id: "n_" + Date.now(), text: newIdeaText.trim() }] });
+                  setNewIdeaText("");
+                }} style={{ background: "#111", border: "none", borderRadius: 8, padding: "8px 14px",
+                  color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: 600, flexShrink: 0 }}>+ Add</button>
+              </div>
+            </div>
+          )}
+
           {/* ── TIMELINE ── */}
           <div style={{ padding: "20px 20px 24px" }}>
+            {/* Collapse all / Expand all — only show for trips with 3+ days */}
+            {allDaysCount >= 3 && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                <button onClick={() => setCollapsedDays(allCollapsed ? new Set() : new Set(trip.plan.days.map((_, i) => i)))}
+                  style={{ background: "none", border: "1px solid #e8e8e8", borderRadius: 20,
+                    padding: "4px 12px", fontSize: 11, color: "#888", cursor: "pointer" }}>
+                  {allCollapsed ? "↕ Expand all" : "↕ Collapse all"}
+                </button>
+              </div>
+            )}
+
             {trip.plan.days.map((day, dayIdx) => {
               const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
               const dayEntries = day.entries || day.items || [];
               const isLast = dayIdx === trip.plan.days.length - 1;
+              const isDayCollapsed = collapsedDays.has(dayIdx);
               const dayDate = trip.startDate ? (() => {
                 const d = new Date(trip.startDate + "T12:00:00");
                 d.setDate(d.getDate() + dayIdx);
                 return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
               })() : null;
+              const visitedCount = dayEntries.filter(e => e.visited).length;
 
               return (
-                <div key={dayIdx} style={{ display: "flex", gap: 0, marginBottom: isLast ? 0 : 28 }}>
+                <div key={dayIdx} style={{ display: "flex", gap: 0, marginBottom: isLast ? 0 : isDayCollapsed ? 12 : 28 }}>
                   {/* Timeline spine */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
                     marginRight: 16, flexShrink: 0, width: 28 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: dayColor,
-                      color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 11, fontWeight: 800, flexShrink: 0, zIndex: 1, boxShadow: `0 0 0 3px ${dayColor}22` }}>
+                    <div onClick={() => toggleDayCollapse(dayIdx)}
+                      style={{ width: 28, height: 28, borderRadius: "50%", background: dayColor,
+                        color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 11, fontWeight: 800, flexShrink: 0, zIndex: 1,
+                        boxShadow: `0 0 0 3px ${dayColor}22`, cursor: "pointer",
+                        opacity: isDayCollapsed ? 0.65 : 1, transition: "opacity 0.15s" }}>
                       {dayIdx + 1}
                     </div>
                     {!isLast && (
-                      <div style={{ width: 2, flex: 1, background: `${dayColor}30`, marginTop: 6, minHeight: 20, borderRadius: 1 }} />
+                      <div style={{ width: 2, flex: 1, background: `${dayColor}30`, marginTop: 6,
+                        minHeight: isDayCollapsed ? 8 : 20, borderRadius: 1 }} />
                     )}
                   </div>
 
                   {/* Day content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Day header row */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {editing ? (
+                    {/* Day header row — always visible, clicking name toggles collapse */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+                      marginBottom: isDayCollapsed ? 0 : 10, gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                        onClick={() => toggleDayCollapse(dayIdx)}>
+                        {editing && !isDayCollapsed ? (
                           <input
                             value={day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
                             onChange={e => updateDayName(dayIdx, e.target.value)}
@@ -4186,14 +4673,38 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                               borderRadius: 8, padding: "4px 10px", width: "100%", background: "#fafafa", outline: "none" }}
                           />
                         ) : (
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", lineHeight: 1.3 }}>
-                            {day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "#111", lineHeight: 1.3 }}>
+                              {day.name || ("Day " + (dayIdx + 1) + (day.city ? " — " + day.city : ""))}
+                            </div>
+                            <span style={{ fontSize: 11, color: "#bbb", transition: "transform 0.15s",
+                              display: "inline-block", transform: isDayCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>
+                              ▾
+                            </span>
                           </div>
                         )}
                         {dayDate && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>{dayDate}</div>}
+                        {/* Collapsed summary */}
+                        {isDayCollapsed && dayEntries.length > 0 && (
+                          <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>
+                            {dayEntries.length} place{dayEntries.length !== 1 ? "s" : ""}
+                            {visitedCount > 0 ? ` · ${visitedCount} visited` : ""}
+                            {" · "}
+                            <span style={{ color: "#bbb" }}>
+                              {dayEntries.slice(0, 2).map(e => e.name).join(", ")}
+                              {dayEntries.length > 2 ? ` +${dayEntries.length - 2}` : ""}
+                            </span>
+                          </div>
+                        )}
+                        {isDayCollapsed && dayEntries.length === 0 && (
+                          <div style={{ fontSize: 11, color: "#ddd", marginTop: 3 }}>No places yet</div>
+                        )}
                       </div>
-                      <DayMapButton day={day} />
+                      {!isDayCollapsed && <DayMapButton day={day} />}
                     </div>
+
+                    {/* Collapsible body */}
+                    {!isDayCollapsed && (<>
 
                     {/* Day notes */}
                     {!past && onUpdate ? (
@@ -4293,6 +4804,7 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                           if (ev.key === "Enter") { addPlace(dayIdx, ev.target.value); ev.target.value = ""; }
                         }} />
                     )}
+                    </>)}
                   </div>
                 </div>
               );
@@ -4325,20 +4837,50 @@ Return ONLY valid JSON, no explanation, no markdown fences:
 
           <div style={{ height: 1, background: "#f5f5f5", margin: "4px 0" }} />
 
-          {!past && onComplete && !confirmingComplete && (
+          {!past && onComplete && !confirmingComplete && !completePhotoStep && (
             <OMenuItem icon="✓" label="Mark as Done" onClick={() => setConfirmingComplete(true)} />
           )}
-          {!past && onComplete && confirmingComplete && (
+          {!past && onComplete && confirmingComplete && !completePhotoStep && (
             <div style={{ padding: "8px 16px" }}>
               <div style={{ fontSize: 12, color: "#555", marginBottom: 8 }}>Move to Past Trips?</div>
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => { onComplete(); setShowOverflowMenu(false); }}
+                <button onClick={() => { setConfirmingComplete(false); setCompletePhotoStep(true); }}
                   style={{ flex: 1, background: "#111", border: "none", borderRadius: 8, padding: "7px",
                     color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Yes</button>
                 <button onClick={() => setConfirmingComplete(false)}
                   style={{ flex: 1, background: "#f5f5f5", border: "none", borderRadius: 8, padding: "7px",
                     color: "#555", fontSize: 12, cursor: "pointer" }}>Cancel</button>
               </div>
+            </div>
+          )}
+          {!past && onComplete && completePhotoStep && (
+            <div style={{ padding: "10px 16px" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#000", marginBottom: 4 }}>Add a cover photo?</div>
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+                Pick a photo from this trip — it'll appear on your Home screen and Trips page.
+              </div>
+              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: "#000", border: "none", borderRadius: 8, padding: "9px",
+                color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", marginBottom: 6 }}>
+                📷 Choose Photo
+                <input type="file" accept="image/*" style={{ display: "none" }}
+                  onChange={e => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                      onComplete(ev.target.result);
+                      setCompletePhotoStep(false);
+                      setShowOverflowMenu(false);
+                    };
+                    reader.readAsDataURL(file);
+                  }} />
+              </label>
+              <button onClick={() => { onComplete(null); setCompletePhotoStep(false); setShowOverflowMenu(false); }}
+                style={{ width: "100%", background: "#f5f5f5", border: "none", borderRadius: 8, padding: "7px",
+                  color: "#888", fontSize: 12, cursor: "pointer" }}>
+                Skip — use destination photo
+              </button>
             </div>
           )}
           {!confirmingDelete ? (
@@ -4368,16 +4910,51 @@ Return ONLY valid JSON, no explanation, no markdown fences:
   );
 }
 
+// ─── PLACE PHOTO HELPERS ─────────────────────────────────────────────────────
+const CUISINE_PHOTOS = {
+  // Food
+  "Thai":          "photo-1559314809-0d155014e29e",
+  "Japanese":      "photo-1569050467447-ce54b3bbc37d",
+  "Chinese":       "photo-1563245372-f21724e3856d",
+  "Mexican":       "photo-1565299585323-38d6b0865b47",
+  "Indian":        "photo-1585937421612-70a008356fbe",
+  "Nepalese":      "photo-1585937421612-70a008356fbe",
+  "American":      "photo-1568901346375-23c9450c58cd",
+  "Korean":        "photo-1498654896293-37aacf113fd9",
+  "Italian":       "photo-1555396273-367ea4eb4db5",
+  "Vietnamese":    "photo-1576577445504-6af96477db52",
+  "Mediterranean": "photo-1544025162-d76538720b72",
+  "Coffee":        "photo-1509042239860-f550ce710b93",
+  "cafe":          "photo-1509042239860-f550ce710b93",
+  "brewery":       "photo-1535958536851-beb9e9b65e7f",
+  "restaurant":    "photo-1414235077428-338989a2e8c0",
+  // Activities
+  "hiking":        "photo-1551632811-561732d1e306",
+  "scenic":        "photo-1506905925346-21bda4d32df4",
+  "outdoor":       "photo-1441974231531-c6227db76b6e",
+  "kids":          "photo-1575783970733-1aaedde1db74",
+  "park":          "photo-1519331379826-f10be5486c6f",
+  "museum":        "photo-1554907984-15263bfd63bd",
+  "landmark":      "photo-1502602898657-3e91760cbb34",
+  "neighborhood":  "photo-1477959858617-67f85cf4f1df",
+  "activity":      "photo-1526401485004-73d51899b6a8",
+};
+
+function getPlacePhoto(entry) {
+  const key = entry.cuisine || entry.type || "restaurant";
+  const photoId = CUISINE_PHOTOS[key] || CUISINE_PHOTOS["restaurant"];
+  return `https://images.unsplash.com/${photoId}?w=400&h=200&fit=crop&auto=format`;
+}
+
 // ─── EXPLORE TAB COMPONENT ───────────────────────────────────────────────────
-function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
-  const [exploreTab, setExploreTab] = useState("network"); // network | popular
+function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBookmarks, onToggleBookmark }) {
+  const [exploreTab, setExploreTab] = useState("network"); // network | foryou
   // Network filters
   const [networkCategory, setNetworkCategory] = useState("all");
   const [networkSearch, setNetworkSearch] = useState("");
   const [networkVerdict, setNetworkVerdict] = useState("all");
-  // Popular filters
-  const [popularCategory, setPopularCategory] = useState("all");
-  const [popularSearch, setPopularSearch] = useState("");
+  const [networkSort, setNetworkSort] = useState("recent"); // recent | rating | bookmarked
+  const [networkMinRating, setNetworkMinRating] = useState(0);
 
   const allUsers = ALL_USERS;
   // Friends entries only (not current user u1)
@@ -4389,6 +4966,8 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
       if (!entryMatchesSearch(e, q)) return false;
     }
     if (networkVerdict !== "all" && e.verdict !== networkVerdict) return false;
+    if (networkMinRating > 0 && (e.rating || 0) < networkMinRating) return false;
+    if (networkSort === "bookmarked" && !(savedBookmarks || new Set()).has(e.id)) return false;
     if (networkCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
     if (networkCategory === "hiking") {
       const activity = MOCK_ACTIVITIES.find(a => a.name === e.name);
@@ -4403,7 +4982,21 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
       return activity?.category === "scenic" || activity?.category === "outdoor";
     }
     return true;
+  }).sort((a, b) => {
+    if (networkSort === "rating") return (b.rating || 0) - (a.rating || 0);
+    return 0; // default: original order (most recent last in mock data)
   });
+
+  // "For You" recommendations: must_go entries your friends logged that you haven't logged
+  const myLoggedNames = new Set(entries.filter(e => e.userId === "u1").map(e => e.name.toLowerCase()));
+  const forYouEntries = networkEntries
+    .filter(e => e.verdict === "must_go" && !myLoggedNames.has(e.name.toLowerCase()))
+    .reduce((acc, e) => { // deduplicate by name
+      if (!acc.find(x => x.name.toLowerCase() === e.name.toLowerCase())) acc.push(e);
+      return acc;
+    }, [])
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    .slice(0, 12);
 
   // For hiking/kids/activities in network tab, use MOCK_ACTIVITIES
   const networkActivities = entries.filter(e => {
@@ -4413,21 +5006,6 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
     if (networkCategory === "kids") return e.type === "kids";
     if (networkCategory === "activities") return e.type === "scenic" || e.type === "outdoor";
     return false;
-  });
-
-  const cityKey = Object.keys(POPULAR_PLACES).find(k =>
-    popularSearch.toLowerCase().includes(k.toLowerCase()) ||
-    k.toLowerCase().includes(popularSearch.toLowerCase())
-  );
-  const popularPlaces = popularSearch.trim()
-    ? (POPULAR_PLACES[cityKey] || POPULAR_PLACES["default"])
-    : POPULAR_PLACES["Denver"];
-
-  const filteredPopular = popularPlaces.filter(p => {
-    if (popularCategory === "food") return ["restaurant","cafe","brewery","market"].includes(p.type);
-    if (popularCategory === "hiking") return p.type === "park" || p.category === "Outdoors";
-    if (popularCategory === "activities") return ["landmark","neighborhood","museum"].includes(p.type);
-    return true;
   });
 
   const catBtn = (val, current, setter, label) => (
@@ -4443,9 +5021,9 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
 
   return (
     <div>
-      {/* Main tabs: Network | Popular */}
+      {/* Main tabs: Network | For You */}
       <div style={{ display: "flex", gap: 0, marginBottom: 16, background: "#f0f0f0", borderRadius: 10, padding: 3 }}>
-        {[["network", "👥 Network"], ["popular", "⭐ Popular"]].map(([id, label]) => (
+        {[["network", "👥 Network"], ["foryou", "💡 For You"]].map(([id, label]) => (
           <button key={id} onClick={() => setExploreTab(id)}
             style={{ flex: 1, background: exploreTab === id ? "#fff" : "transparent",
               border: "none", borderRadius: 8, padding: "10px 8px", cursor: "pointer",
@@ -4482,7 +5060,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
 
           {/* Verdict filter for food */}
           {networkCategory === "food" && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               {[["all","All"],["must_go","✓ Must Go"],["skip","✕ Skip"]].map(([v,l]) => (
                 <button key={v} onClick={() => setNetworkVerdict(v)}
                   style={{ background: networkVerdict === v ? "#000" : "#f8f8f8",
@@ -4495,6 +5073,32 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
             </div>
           )}
 
+          {/* Sort + Rating filter row */}
+          {(networkCategory === "all" || networkCategory === "food") && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "#aaa", flexShrink: 0 }}>Sort:</span>
+              {[["recent","Recent"],["rating","Top Rated"],["bookmarked","⭐ Saved"]].map(([v,l]) => (
+                <button key={v} onClick={() => setNetworkSort(v)}
+                  style={{ background: networkSort === v ? "#000" : "#f8f8f8",
+                    border: `1px solid ${networkSort === v ? "#000" : "#efefef"}`,
+                    color: networkSort === v ? "#fff" : "#555",
+                    borderRadius: 20, padding: "5px 12px", cursor: "pointer", fontSize: 11, whiteSpace: "nowrap" }}>
+                  {l}
+                </button>
+              ))}
+              <span style={{ fontSize: 11, color: "#aaa", marginLeft: 4, flexShrink: 0 }}>Min ★:</span>
+              {[0,3,4,5].map(r => (
+                <button key={r} onClick={() => setNetworkMinRating(r)}
+                  style={{ background: networkMinRating === r ? "#000" : "#f8f8f8",
+                    border: `1px solid ${networkMinRating === r ? "#000" : "#efefef"}`,
+                    color: networkMinRating === r ? "#fff" : "#555",
+                    borderRadius: 20, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>
+                  {r === 0 ? "All" : r + "+"}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Results count */}
           <div style={{ fontSize: 12, color: "#888", marginBottom: 12, fontWeight: 500 }}>
             {networkCategory === "all" || networkCategory === "food"
@@ -4502,106 +5106,244 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
               : `${networkActivities.length} ${networkCategory} from your network`}
           </div>
 
-          {/* Entries */}
+          {/* Entries — 2-column photo grid */}
           {(networkCategory === "all" || networkCategory === "food") && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {filteredNetwork.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 20px", color: "#aaa" }}>
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px 20px", color: "#aaa" }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
-                  <div style={{ fontSize: 14 }}>No results found</div>
+                  <div style={{ fontSize: 14 }}>{networkSort === "bookmarked" ? "No saved places yet — bookmark entries below" : "No results found"}</div>
                 </div>
               ) : filteredNetwork.map(e => {
                 const user = allUsers.find(u => u.id === e.userId);
+                const isBookmarked = (savedBookmarks || new Set()).has(e.id);
                 return (
-                  <div key={e.id} style={{ position: "relative" }}>
-                    <EntryCard entry={e} user={user ? {...user, onViewProfile} : user} />
-                    {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
-                      <div style={{ position: "absolute", bottom: 12, right: 12 }}>
+                  <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+                    {/* Photo — friend's own if available, else generic */}
+                    <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+                      <img src={(e.photos && e.photos.length > 0) ? e.photos[0] : getPlacePhoto(e)} alt={e.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+                      <button onClick={() => onToggleBookmark && onToggleBookmark(e.id)}
+                        title={isBookmarked ? "Remove bookmark" : "Save"}
+                        style={{ position: "absolute", top: 6, right: 6, background: isBookmarked ? "#fffbeb" : "rgba(255,255,255,0.85)", border: `1px solid ${isBookmarked ? "#fde68a" : "#e8e8e8"}`, borderRadius: 6, padding: "3px 7px", fontSize: 12, cursor: "pointer", color: isBookmarked ? "#d97706" : "#aaa", lineHeight: 1 }}>
+                        {isBookmarked ? "★" : "☆"}
+                      </button>
+                    </div>
+                    {/* Info */}
+                    <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                        <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={ev => ev.stopPropagation()}
+                          style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
+                          onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                          onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                          {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
+                        </a>
+                        <StarRating value={e.rating} size={11} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "#888", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                        {e.city}, {e.state} · {e.cuisine || e.type}
+                      </div>
+                      {e.verdict && <VerdictBadge verdict={e.verdict} />}
+                      {e.notes && (
+                        <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                          "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                        </div>
+                      )}
+                      {(e.photos && e.photos.length > 0) && (
+                        <div style={{ marginTop: 4 }}><PhotoStrip photos={e.photos} inline /></div>
+                      )}
+                      {user && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, borderTop: "1px solid #f0f0f0", paddingTop: 6 }}>
+                          <span style={{ fontSize: 12 }}>{user.avatar}</span>
+                          <span onClick={ev => { ev.stopPropagation(); onViewProfile && onViewProfile(user.id); }}
+                            style={{ color: "#555", fontSize: 10, cursor: "pointer", textDecoration: "underline", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            @{user.username}
+                          </span>
+                        </div>
+                      )}
+                      {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
                         <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
-                          style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                          style={{ marginTop: 4, background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 6px", fontSize: 10, cursor: "pointer", width: "100%" }}
                           defaultValue="">
-                          <option value="" disabled>+ Trip</option>
+                          <option value="" disabled>+ Add to Trip</option>
                           {savedTrips.filter(t => !t.completed).map(t => (
                             <option key={t.id} value={t.id}>{t.destination}</option>
                           ))}
                         </select>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* Activities */}
+          {/* Activities — 2-column photo grid */}
           {(networkCategory === "hiking" || networkCategory === "kids" || networkCategory === "activities") && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {networkActivities.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 20px", color: "#aaa" }}>
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px 20px", color: "#aaa" }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>🏔</div>
                   <div style={{ fontSize: 14 }}>No {networkCategory} from your network</div>
                 </div>
               ) : networkActivities.map(e => {
                 const user = allUsers.find(u => u.id === e.userId);
-                return <ActivityCard key={e.id} activity={e} user={user} />;
+                const isBookmarked = (savedBookmarks || new Set()).has(e.id);
+                return (
+                  <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+                    {/* Photo — friend's own if available, else generic */}
+                    <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+                      <img src={(e.photos && e.photos.length > 0) ? e.photos[0] : getPlacePhoto(e)} alt={e.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+                      <button onClick={() => onToggleBookmark && onToggleBookmark(e.id)}
+                        title={isBookmarked ? "Remove bookmark" : "Save"}
+                        style={{ position: "absolute", top: 6, right: 6, background: isBookmarked ? "#fffbeb" : "rgba(255,255,255,0.85)", border: `1px solid ${isBookmarked ? "#fde68a" : "#e8e8e8"}`, borderRadius: 6, padding: "3px 7px", fontSize: 12, cursor: "pointer", color: isBookmarked ? "#d97706" : "#aaa", lineHeight: 1 }}>
+                        {isBookmarked ? "★" : "☆"}
+                      </button>
+                    </div>
+                    {/* Info */}
+                    <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                        <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={ev => ev.stopPropagation()}
+                          style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
+                          onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                          onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                          {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
+                        </a>
+                        <StarRating value={e.rating} size={11} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "#888", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                        {e.city}, {e.state} · {e.type}
+                      </div>
+                      {e.difficulty && (
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#555", background: "#f0f0f0", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{e.difficulty}</span>
+                      )}
+                      {e.notes && (
+                        <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                          "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                        </div>
+                      )}
+                      {(e.photos && e.photos.length > 0) && (
+                        <div style={{ marginTop: 4 }}><PhotoStrip photos={e.photos} inline /></div>
+                      )}
+                      {user && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, borderTop: "1px solid #f0f0f0", paddingTop: 6 }}>
+                          <span style={{ fontSize: 12 }}>{user.avatar}</span>
+                          <span onClick={ev => { ev.stopPropagation(); onViewProfile && onViewProfile(user.id); }}
+                            style={{ color: "#555", fontSize: 10, cursor: "pointer", textDecoration: "underline", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            @{user.username}
+                          </span>
+                        </div>
+                      )}
+                      {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
+                        <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
+                          style={{ marginTop: 4, background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 6px", fontSize: 10, cursor: "pointer", width: "100%" }}
+                          defaultValue="">
+                          <option value="" disabled>+ Add to Trip</option>
+                          {savedTrips.filter(t => !t.completed).map(t => (
+                            <option key={t.id} value={t.id}>{t.destination}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                );
               })}
             </div>
           )}
         </div>
       )}
 
-      {/* POPULAR TAB */}
-      {exploreTab === "popular" && (
+      {/* FOR YOU TAB */}
+      {exploreTab === "foryou" && (
         <div>
-          {/* Search by city */}
-          <div style={{ position: "relative", marginBottom: 12 }}>
-            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }}>🔍</span>
-            <input value={popularSearch} onChange={e => setPopularSearch(e.target.value)}
-              placeholder="Search a city (e.g. Denver, Boulder)..."
-              style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
-                padding: "11px 12px 11px 34px", color: "#000", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
-            {popularSearch && <button onClick={() => setPopularSearch("")}
-              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#aaa", cursor: "pointer", fontSize: 16 }}>×</button>}
-          </div>
-
-          {/* Category filters */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
-            {catBtn("all", popularCategory, setPopularCategory, "All")}
-            {catBtn("food", popularCategory, setPopularCategory, "🍽 Food")}
-            {catBtn("hiking", popularCategory, setPopularCategory, "🥾 Outdoors")}
-            {catBtn("activities", popularCategory, setPopularCategory, "⭐ Attractions")}
-          </div>
-
+          {/* Results count */}
           <div style={{ fontSize: 12, color: "#888", marginBottom: 12, fontWeight: 500 }}>
-            {popularSearch.trim() ? `Popular in ${popularSearch}` : "Popular in Denver, CO"} · {filteredPopular.length} places
+            {forYouEntries.length} picks from your network
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filteredPopular.map(p => (
-              <div key={p.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                      <a href={`https://www.google.com/maps/search/${encodeURIComponent(p.name + ' ' + p.city)}`}
+          {/* 2-column photo grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {forYouEntries.length === 0 ? (
+              <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px 20px", color: "#aaa" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>💡</div>
+                <div style={{ fontSize: 14 }}>No new recommendations yet</div>
+                <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>Follow more friends to get personalized picks</div>
+              </div>
+            ) : forYouEntries.map((e, i) => {
+              const user = allUsers.find(u => u.id === e.userId);
+              const isBookmarked = (savedBookmarks || new Set()).has(e.id);
+              return (
+                <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+                  {/* Photo */}
+                  <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+                    <img src={getPlacePhoto(e)} alt={e.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+                    {i < 3 && (
+                      <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2,
+                        background: i === 0 ? "#FFB800" : i === 1 ? "#9ca3af" : "#b45309",
+                        color: "#fff", borderRadius: 20, fontSize: 9, fontWeight: 800, padding: "2px 7px" }}>
+                        #{i + 1}
+                      </div>
+                    )}
+                    <button onClick={() => onToggleBookmark && onToggleBookmark(e.id)}
+                      title={isBookmarked ? "Remove bookmark" : "Save"}
+                      style={{ position: "absolute", top: 6, right: 6, background: isBookmarked ? "#fffbeb" : "rgba(255,255,255,0.85)", border: `1px solid ${isBookmarked ? "#fde68a" : "#e8e8e8"}`, borderRadius: 6, padding: "3px 7px", fontSize: 12, cursor: "pointer", color: isBookmarked ? "#d97706" : "#aaa", lineHeight: 1 }}>
+                      {isBookmarked ? "★" : "☆"}
+                    </button>
+                  </div>
+                  {/* Info */}
+                  <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                      <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
                         target="_blank" rel="noopener noreferrer"
-                        style={{ fontSize: 15, fontWeight: 600, color: "#000", textDecoration: "none" }}
-                        onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-                        onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
-                        {p.name} ↗
+                        onClick={ev => ev.stopPropagation()}
+                        style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
+                        onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                        onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                        {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
                       </a>
-                      <span style={{ background: "#f0f0f0", color: "#555", borderRadius: 4, padding: "2px 8px", fontSize: 11 }}>{p.category}</span>
+                      <StarRating value={e.rating} size={11} />
                     </div>
-                    <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>{p.city}, {p.state}</div>
-                    <div style={{ fontSize: 13, color: "#555", lineHeight: 1.5 }}>{p.desc}</div>
+                    <div style={{ fontSize: 11, color: "#888", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                      {e.city}, {e.state} · {e.cuisine || e.type}
+                    </div>
+                    {e.verdict && <VerdictBadge verdict={e.verdict} />}
+                    {e.notes && (
+                      <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                        "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                      </div>
+                    )}
+                    {user && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, borderTop: "1px solid #f0f0f0", paddingTop: 6 }}>
+                        <span style={{ fontSize: 12 }}>{user.avatar}</span>
+                        <span onClick={ev => { ev.stopPropagation(); onViewProfile && onViewProfile(user.id); }}
+                          style={{ color: "#555", fontSize: 10, cursor: "pointer", textDecoration: "underline", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                          @{user.username}
+                        </span>
+                      </div>
+                    )}
+                    {savedTrips && savedTrips.filter(t => !t.completed).length > 0 && (
+                      <select onChange={ev => { if (ev.target.value && onAddToTrip) { onAddToTrip(ev.target.value, e); ev.target.value = ""; }}}
+                        style={{ marginTop: 4, background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 6px", fontSize: 10, cursor: "pointer", width: "100%" }}
+                        defaultValue="">
+                        <option value="" disabled>+ Add to Trip</option>
+                        {savedTrips.filter(t => !t.completed).map(t => (
+                          <option key={t.id} value={t.id}>{t.destination}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ color: "#FFB800", fontSize: 13 }}>★</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#000" }}>{p.rating}</span>
-                  <span style={{ fontSize: 12, color: "#aaa" }}>({p.reviews.toLocaleString()} reviews)</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -4609,45 +5351,75 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile }) {
   );
 }
 
+// ─── DESTINATION PHOTO (Wikipedia thumbnail, cached) ─────────────────────────
+const _wikiPhotoCache = {};
+const _DEST_FALLBACK = "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=700&q=80";
+
+function DestinationPhoto({ destination, coverPhoto, style }) {
+  const [src, setSrc] = useState(coverPhoto || _DEST_FALLBACK);
+  useEffect(() => {
+    if (coverPhoto) { setSrc(coverPhoto); return; }
+    if (!destination) return;
+    const key = destination.trim();
+    if (_wikiPhotoCache[key]) { setSrc(_wikiPhotoCache[key]); return; }
+    fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(key)}&prop=pageimages&format=json&pithumbsize=800&origin=*`)
+      .then(r => r.json())
+      .then(data => {
+        const page = Object.values(data?.query?.pages || {})[0];
+        const url = page?.thumbnail?.source;
+        if (url) { _wikiPhotoCache[key] = url; setSrc(url); }
+      })
+      .catch(() => {});
+  }, [destination, coverPhoto]);
+  return <img src={src} alt={destination} style={style} />;
+}
+
 // ─── HOME TAB COMPONENT ──────────────────────────────────────────────────────
-function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGoToExplore, onGoToTrip }) {
-  const upcomingTrips = (savedTrips || []).filter(t => !t.completed).slice(0, 3);
+function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGoToExplore, onGoToTrip, onUpdateCoverPhoto, onViewProfile }) {
+  const SERIF = "'Lora', 'Georgia', serif";
+  const SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
-  // Friends' recent entries (last 4, excluding own)
-  const friendEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity).slice(-4).reverse();
-
-  const myEntries = entries.filter(e => e.userId === "u1");
-  const stats = [
-    { label: "Places Logged", value: myEntries.length },
-    { label: "Trips Planned", value: (savedTrips || []).filter(t => !t.completed).length },
-    { label: "Past Trips", value: (savedTrips || []).filter(t => t.completed).length },
+  const FOOD_PHOTOS = [
+    "https://images.unsplash.com/photo-1569050467447-ce54b3bbc37d?w=400&q=80",
+    "https://images.unsplash.com/photo-1555126634-323283e090fa?w=400&q=80",
+    "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&q=80",
+    "https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?w=400&q=80",
+    "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=400&q=80",
+    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80",
   ];
 
+  const upcomingTrips = (savedTrips || []).filter(t => !t.completed).slice(0, 3);
+  const friendEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity).slice(-4).reverse();
+  const pastTrips = (savedTrips || []).filter(t => t.completed).slice(-4).reverse();
+  const myEntries = entries.filter(e => e.userId === "u1");
+
   const verdictLabel = { must_go: "Must Go", liked: "Liked", meh: "Meh", avoid: "Avoid" };
-  const verdictColor = { must_go: "#000", liked: "#16a34a", meh: "#d97706", avoid: "#ef4444" };
+  const verdictBg    = { must_go: "#E8873A", liked: "#16a34a", meh: "#d97706", avoid: "#ef4444" };
+
+  const SectionHeader = ({ title, onSeeAll }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9e8878", textTransform: "uppercase", letterSpacing: "0.1em" }}>{title}</div>
+      {onSeeAll && <button onClick={onSeeAll} style={{ background: "none", border: "none", fontFamily: SANS, fontSize: 12, color: "#b09e94", cursor: "pointer", padding: 0 }}>See all →</button>}
+    </div>
+  );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
       {/* Greeting */}
-      <div style={{ paddingTop: 4 }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: "#000" }}>
+      <div style={{ paddingTop: 6 }}>
+        <div style={{ fontFamily: SERIF, fontSize: 28, fontWeight: 600, color: "#1a0a00", lineHeight: 1.2 }}>
           Hey, {currentUser.name.split(" ")[0]} {currentUser.avatar}
         </div>
-        <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>Here's what's going on</div>
       </div>
 
       {/* ── Upcoming Trips ── */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em" }}>Upcoming Trips</div>
-          <button onClick={onGoToTrips} style={{ background: "none", border: "none", fontSize: 12, color: "#888", cursor: "pointer", padding: 0 }}>See all →</button>
-        </div>
+        <SectionHeader title="Upcoming Trips" onSeeAll={onGoToTrips} />
         {upcomingTrips.length === 0 ? (
-          <div style={{ background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14, padding: "28px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🗺</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#555" }}>No trips planned</div>
-            <button onClick={onGoToTrips} style={{ marginTop: 10, background: "#000", border: "none", borderRadius: 8, padding: "8px 18px", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          <div style={{ background: "rgba(61,31,20,0.04)", border: "1px dashed #d8cfc7", borderRadius: 18, padding: "28px 20px", textAlign: "center" }}>
+            <div style={{ fontFamily: SERIF, fontSize: 15, color: "#9e8878", marginBottom: 12 }}>No trips planned yet</div>
+            <button onClick={onGoToTrips} style={{ background: "#3d1f14", border: "none", borderRadius: 10, padding: "9px 20px", color: "#fff", fontFamily: SANS, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               + Plan a Trip
             </button>
           </div>
@@ -4662,72 +5434,89 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
               const isHero = i === 0;
               const hasPackList = (trip.packList || []).length > 0;
               const hasReminders = (trip.reminders || []).length > 0;
-              const showStrip = hasPackList || hasReminders;
-              return (
-                <div key={trip.id} onClick={onGoToTrips} style={{
-                  background: isHero ? "#000" : "#fff",
-                  border: `1px solid ${isHero ? "#000" : "#efefef"}`,
-                  borderRadius: 14, cursor: "pointer",
-                  boxShadow: isHero ? "0 4px 16px rgba(0,0,0,0.15)" : "0 1px 3px rgba(0,0,0,0.05)",
-                  overflow: "hidden"
-                }}>
-                  {/* Top row */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 18px" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: isHero ? "#fff" : "#000" }}>🗺 {trip.destination}</div>
-                      <div style={{ fontSize: 12, color: isHero ? "rgba(255,255,255,0.65)" : "#888", marginTop: 4 }}>
+              const packedCount = (trip.packList||[]).filter(x => x.packed).length;
+              const totalPack = (trip.packList||[]).length;
+              const packPct = totalPack > 0 ? (packedCount / totalPack) * 100 : 0;
+              if (isHero) {
+                return (
+                  <div key={trip.id} onClick={onGoToTrips} style={{
+                    position: "relative", borderRadius: 20, overflow: "hidden",
+                    height: 190, cursor: "pointer",
+                    boxShadow: "0 6px 28px rgba(0,0,0,0.22)"
+                  }}>
+                    <DestinationPhoto destination={trip.destination} coverPhoto={trip.coverPhoto}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.60) 100%)" }} />
+                    {daysAway !== null && (
+                      <div style={{ position: "absolute", top: 16, right: 18, textAlign: "center" }}>
+                        <div style={{ fontFamily: SANS, fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                          {daysAway <= 0 ? "🛫" : daysAway}
+                        </div>
+                        <div style={{ fontFamily: SANS, fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.72)", marginTop: 3 }}>
+                          {daysAway <= 0 ? "Today!" : daysAway === 1 ? "Day Away" : "Days Away"}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "0 18px 16px" }}>
+                      <div style={{ fontFamily: SERIF, fontSize: 21, fontWeight: 700, color: "#fff", lineHeight: 1.2, marginBottom: 4 }}>
+                        ✈ {trip.destination}
+                      </div>
+                      <div style={{ fontFamily: SANS, fontSize: 12, color: "rgba(255,255,255,0.72)", marginBottom: hasPackList ? 10 : 0 }}>
                         {trip.days} days
                         {trip.startDate ? ` · ${new Date(trip.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
                         {trip.invitedFriends?.length > 0 ? ` · ${trip.invitedFriends.length} going` : ""}
                       </div>
-                    </div>
-                    {daysAway !== null && (
-                      <div style={{ textAlign: "center", flexShrink: 0 }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: isHero ? "#fff" : "#000", lineHeight: 1 }}>
-                          {daysAway <= 0 ? "🛫" : daysAway}
-                        </div>
-                        <div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em",
-                          color: isHero ? "rgba(255,255,255,0.55)" : "#aaa", marginTop: 2 }}>
-                          {daysAway <= 0 ? "today!" : daysAway === 1 ? "day away" : "days away"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {/* Bottom strip */}
-                  {showStrip && (
-                    <div style={{
-                      borderTop: `1px solid ${isHero ? "rgba(255,255,255,0.1)" : "#f0f0f0"}`,
-                      display: "flex"
-                    }}>
                       {hasPackList && (
                         <button onClick={e => { e.stopPropagation(); onGoToTrip && onGoToTrip(trip.id, "packList"); }}
-                          style={{
-                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                            padding: "10px 14px", background: "none", border: "none", cursor: "pointer",
-                            borderRight: hasReminders ? `1px solid ${isHero ? "rgba(255,255,255,0.1)" : "#f0f0f0"}` : "none"
-                          }}>
-                          <span style={{ fontSize: 13 }}>🎒</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: isHero ? "rgba(255,255,255,0.9)" : "#333" }}>
-                            {(trip.packList||[]).filter(x => x.packed).length}/{(trip.packList||[]).length} packed
-                          </span>
+                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", width: "100%" }}>
+                          <div style={{ fontFamily: SANS, fontSize: 11, color: "rgba(255,255,255,0.82)", marginBottom: 5 }}>
+                            🎒 {packedCount}/{totalPack} packed
+                          </div>
+                          <div style={{ height: 4, background: "rgba(255,255,255,0.22)", borderRadius: 4, overflow: "hidden", width: "100%" }}>
+                            <div style={{ height: "100%", width: `${packPct}%`, background: "#e879a0", borderRadius: 4 }} />
+                          </div>
                         </button>
                       )}
                       {hasReminders && (
                         <button onClick={e => { e.stopPropagation(); onGoToTrip && onGoToTrip(trip.id, "bookRemind"); }}
-                          style={{
-                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                            padding: "10px 14px", background: "none", border: "none", cursor: "pointer"
-                          }}>
-                          <span style={{ fontSize: 13 }}>📋</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: isHero ? "rgba(255,255,255,0.9)" : "#333" }}>
-                            {(trip.reminders||[]).length} to book
-                          </span>
+                          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", marginTop: hasPackList ? 6 : 0 }}>
+                          <div style={{ fontFamily: SANS, fontSize: 11, color: "rgba(255,255,255,0.72)" }}>
+                            📋 {(trip.reminders||[]).length} to book
+                          </div>
                         </button>
                       )}
                     </div>
-                  )}
-                </div>
-              );
+                  </div>
+                );
+              } else {
+                return (
+                  <div key={trip.id} onClick={onGoToTrips} style={{
+                    position: "relative", borderRadius: 16, overflow: "hidden",
+                    height: 88, cursor: "pointer",
+                    boxShadow: "0 2px 12px rgba(0,0,0,0.14)"
+                  }}>
+                    <DestinationPhoto destination={trip.destination} coverPhoto={trip.coverPhoto}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to right, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.12) 100%)" }} />
+                    <div style={{ position: "relative", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+                      <div>
+                        <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: "#fff" }}>{trip.destination}</div>
+                        <div style={{ fontFamily: SANS, fontSize: 11, color: "rgba(255,255,255,0.68)", marginTop: 2 }}>
+                          {trip.days} days{trip.startDate ? ` · ${new Date(trip.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                        </div>
+                      </div>
+                      {daysAway !== null && (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontFamily: SANS, fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{daysAway <= 0 ? "🛫" : daysAway}</div>
+                          <div style={{ fontFamily: SANS, fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "rgba(255,255,255,0.62)", marginTop: 2 }}>
+                            {daysAway <= 0 ? "Today" : "Days Away"}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
             })}
           </div>
         )}
@@ -4735,35 +5524,88 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
 
       {/* ── Friends Activity ── */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em" }}>Friends Activity</div>
-          <button onClick={onGoToExplore} style={{ background: "none", border: "none", fontSize: 12, color: "#888", cursor: "pointer", padding: 0 }}>See all →</button>
-        </div>
+        <SectionHeader title="Friends Activity" onSeeAll={onGoToExplore} />
         {friendEntries.length === 0 ? (
-          <div style={{ background: "#fafafa", border: "1px dashed #e8e8e8", borderRadius: 14, padding: "24px 20px", textAlign: "center" }}>
+          <div style={{ background: "rgba(61,31,20,0.04)", border: "1px dashed #d8cfc7", borderRadius: 16, padding: "24px 20px", textAlign: "center" }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
-            <div style={{ fontSize: 13, color: "#888" }}>No recent activity from friends</div>
+            <div style={{ fontFamily: SANS, fontSize: 13, color: "#9e8878" }}>No recent activity from friends</div>
           </div>
         ) : (
-          <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            {friendEntries.map((e, i) => {
+          <div className="home-photo-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+            {friendEntries.map((e, idx) => {
               const user = allUsers.find(u => u.id === e.userId);
+              const foodPhoto = FOOD_PHOTOS[idx % FOOD_PHOTOS.length];
+              const bg = verdictBg[e.verdict] || "#E8873A";
+              const vLabel = verdictLabel[e.verdict] || "";
               return (
-                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
-                  borderBottom: i < friendEntries.length - 1 ? "1px solid #f5f5f5" : "none" }}>
-                  <div style={{ width: 36, height: 36, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                    {user?.avatar}
+                <div key={e.id} onClick={() => onViewProfile && user && onViewProfile(user.id)}
+                  style={{
+                    width: 148, flexShrink: 0, borderRadius: 16, overflow: "hidden",
+                    boxShadow: "0 3px 14px rgba(0,0,0,0.16)",
+                    cursor: "pointer", display: "flex", flexDirection: "column",
+                    background: "#fff"
+                  }}>
+                  {/* Photo */}
+                  <div style={{ position: "relative", height: 130, flexShrink: 0 }}>
+                    <img src={foodPhoto} alt={e.name}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                    {/* Gradient */}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
+                      background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)" }} />
+                    {/* Avatar top-right */}
+                    {user && (
+                      <button onClick={ev => { ev.stopPropagation(); onViewProfile && onViewProfile(user.id); }}
+                        title={`View @${user.username}`}
+                        style={{ position: "absolute", top: 8, right: 8, width: 30, height: 30,
+                          background: "#f0ebe6", borderRadius: "50%", border: "2px solid #fff",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 14, overflow: "hidden", boxShadow: "0 1px 5px rgba(0,0,0,0.22)",
+                          cursor: "pointer", padding: 0 }}>
+                        {user.avatarImg
+                          ? <img src={user.avatarImg} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : user.avatar}
+                      </button>
+                    )}
+                    {/* Place name — opens this specific entry */}
+                    <div style={{ position: "absolute", bottom: 28, left: 8, right: 8,
+                        fontFamily: SERIF, fontSize: 12, fontWeight: 700, color: "#fff",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {e.name}
+                    </div>
+                    {/* Verdict badge — own line at very bottom */}
+                    {e.verdict && (
+                      <div style={{ position: "absolute", bottom: 8, left: 8,
+                        background: bg, color: "#fff",
+                        fontFamily: SANS, fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                        letterSpacing: "0.06em", borderRadius: 8, padding: "3px 8px" }}>
+                        {vLabel}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</div>
-                    <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{user?.name?.split(" ")[0]} · {e.city}</div>
+                  {/* Info strip */}
+                  <div style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 7, borderTop: "1px solid #f5f0ec" }}>
+                    {user && (
+                      <div style={{ width: 22, height: 22, background: "#f0ebe6", borderRadius: "50%",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, flexShrink: 0, overflow: "hidden" }}>
+                        {user.avatarImg
+                          ? <img src={user.avatarImg} alt={user.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : user.avatar}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: "#3d1f14",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        @{user?.username || ""}
+                      </div>
+                      {(e.city || e.state) && (
+                        <div style={{ fontFamily: SANS, fontSize: 9, color: "#9e8878", marginTop: 1,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {[e.city, e.state].filter(Boolean).join(", ")}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {e.verdict && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: verdictColor[e.verdict], background: verdictColor[e.verdict] + "15",
-                      borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>
-                      {verdictLabel[e.verdict]}
-                    </span>
-                  )}
                 </div>
               );
             })}
@@ -4771,19 +5613,59 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
         )}
       </div>
 
-      {/* ── Quick Snapshot ── */}
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#000", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Quick Snapshot</div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {stats.map(s => (
-            <div key={s.label} style={{ flex: 1, background: "#fff", border: "1px solid #efefef", borderRadius: 14,
-              padding: "16px 12px", textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#000" }}>{s.value}</div>
-              <div style={{ fontSize: 10, color: "#888", marginTop: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-            </div>
-          ))}
+      {/* ── Past Trips ── */}
+      {pastTrips.length > 0 && (
+        <div>
+          <SectionHeader title="Past Trips" onSeeAll={onGoToTrips} />
+          <div style={{ display: "flex", gap: 10 }}>
+            {pastTrips.slice(0, 2).map(trip => {
+              const dateLabel = trip.startDate
+                ? (() => {
+                    const s = new Date(trip.startDate + "T12:00:00");
+                    const endDate = trip.endDate ? new Date(trip.endDate + "T12:00:00") : null;
+                    if (endDate) {
+                      return `${s.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${endDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+                    }
+                    return s.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                  })()
+                : null;
+              return (
+                <div key={trip.id} style={{
+                  flex: 1, position: "relative", height: 132, borderRadius: 16, overflow: "hidden",
+                  cursor: "pointer", boxShadow: "0 3px 14px rgba(0,0,0,0.18)"
+                }}>
+                  <DestinationPhoto destination={trip.destination} coverPhoto={trip.coverPhoto}
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                  <div onClick={onGoToTrips} style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.04) 60%)" }} />
+                  {/* 📷 Change photo button */}
+                  <label title="Change cover photo" style={{
+                    position: "absolute", top: 8, right: 8,
+                    background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+                    border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8,
+                    padding: "4px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                    color: "#fff", fontSize: 11, fontFamily: SANS, fontWeight: 600,
+                    zIndex: 2
+                  }}>
+                    📷
+                    <input type="file" accept="image/*" style={{ display: "none" }}
+                      onChange={e => {
+                        const file = e.target.files[0];
+                        if (!file || !onUpdateCoverPhoto) return;
+                        const reader = new FileReader();
+                        reader.onload = ev => onUpdateCoverPhoto(trip.id, ev.target.result);
+                        reader.readAsDataURL(file);
+                      }} />
+                  </label>
+                  <div onClick={onGoToTrips} style={{ position: "absolute", bottom: 11, left: 12, right: 8 }}>
+                    <div style={{ fontFamily: SERIF, fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1.3 }}>{trip.destination}</div>
+                    {dateLabel && <div style={{ fontFamily: SANS, fontSize: 10, color: "rgba(255,255,255,0.72)", marginTop: 2 }}>{dateLabel}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
     </div>
   );
@@ -4794,7 +5676,11 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
   const [logsCategory, setLogsCategory] = useState("all");
   const [logsSearch, setLogsSearch] = useState("");
   const [importResult, setImportResult] = useState(null);
+  const [logsVerdictFilter, setLogsVerdictFilter] = useState(null);
+  const [logsCityFilter, setLogsCityFilter] = useState(null);
+  const [showCityPicker, setShowCityPicker] = useState(false);
   const myEntries = entries.filter(e => e.userId === "u1");
+  const myCities = [...new Set(myEntries.map(e => e.city).filter(Boolean))].sort();
 
   const parseAllTrailsCSV = (text) => {
     const lines = text.trim().split("\n");
@@ -4827,6 +5713,8 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
       const q = logsSearch.toLowerCase();
       if (!entryMatchesSearch(e, q)) return false;
     }
+    if (logsVerdictFilter && e.verdict !== logsVerdictFilter) return false;
+    if (logsCityFilter && e.city !== logsCityFilter) return false;
     if (logsCategory === "food") return ["restaurant","cafe","brewery"].includes(e.type);
     if (logsCategory === "hiking") return e.type === "hiking";
     if (logsCategory === "kids") return e.type === "kids";
@@ -4867,13 +5755,46 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
           </button>
         </div>
         <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
-          {[["Logs", myEntries.length],["Must Go", myEntries.filter(e=>e.verdict==="must_go").length],["Cities", new Set(myEntries.map(e=>e.city)).size],["Trips", savedTrips.length]].map(([l,v]) => (
-            <div key={l}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#000" }}>{v}</div>
-              <div style={{ fontSize: 11, color: "#888" }}>{l}</div>
+          {[
+            { label: "Logs", value: myEntries.length, action: () => { setLogsVerdictFilter(null); setLogsCityFilter(null); setShowCityPicker(false); }, active: !logsVerdictFilter && !logsCityFilter },
+            { label: "Must Go", value: myEntries.filter(e=>e.verdict==="must_go").length, action: () => { setLogsVerdictFilter(logsVerdictFilter === "must_go" ? null : "must_go"); setShowCityPicker(false); }, active: logsVerdictFilter === "must_go" },
+            { label: "Cities", value: myCities.length, action: () => setShowCityPicker(s => !s), active: showCityPicker || !!logsCityFilter },
+            { label: "Trips", value: savedTrips.length, action: null, active: false },
+          ].map(({ label, value, action, active }) => (
+            <div key={label} onClick={action || undefined}
+              style={{ cursor: action ? "pointer" : "default" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: active ? "#000" : "#000" }}>{value}</div>
+              <div style={{ fontSize: 11, color: active ? "#000" : "#888", fontWeight: active ? 700 : 400, borderBottom: active ? "2px solid #000" : "2px solid transparent", paddingBottom: 1, transition: "all 0.15s" }}>{label}</div>
             </div>
           ))}
         </div>
+
+        {/* City picker — shown when Cities stat is tapped */}
+        {showCityPicker && (
+          <div style={{ marginTop: 14, borderTop: "1px solid #f0f0f0", paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#bbb", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Filter by City</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {logsCityFilter && (
+                <button onClick={() => setLogsCityFilter(null)}
+                  style={{ background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 20, padding: "4px 12px", fontSize: 11, color: "#555", cursor: "pointer" }}>
+                  ✕ Clear
+                </button>
+              )}
+              {myCities.map(c => {
+                const count = myEntries.filter(e => e.city === c).length;
+                return (
+                  <button key={c} onClick={() => setLogsCityFilter(logsCityFilter === c ? null : c)}
+                    style={{ background: logsCityFilter === c ? "#000" : "#f8f8f8",
+                      border: `1px solid ${logsCityFilter === c ? "#000" : "#e8e8e8"}`,
+                      color: logsCityFilter === c ? "#fff" : "#444",
+                      borderRadius: 20, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>
+                    📍 {c} <span style={{ opacity: 0.6 }}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Search + Import */}
@@ -4910,8 +5831,8 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
               <div style={{ fontSize: 13, color: "#000", marginBottom: 10 }}>
                 {importResult.length === 0 ? "No hikes found — check the file format." : <><strong>{importResult.length}</strong> hike{importResult.length !== 1 ? "s" : ""} found</>}
               </div>
-              {importResult.slice(0, 3).map((h, i) => (
-                <div key={i} style={{ fontSize: 12, color: "#555", padding: "4px 0", borderBottom: "1px solid #efefef" }}>
+              {importResult.slice(0, 3).map((h) => (
+                <div key={h.name} style={{ fontSize: 12, color: "#555", padding: "4px 0", borderBottom: "1px solid #efefef" }}>
                   🥾 {h.name} {h.distance ? `· ${h.distance}` : ""}
                 </div>
               ))}
@@ -4945,33 +5866,78 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
         {filteredLogs.length} {logsCategory === "all" ? "logs" : logsCategory}
       </div>
 
-      {/* Entries */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Entries — 2-column photo grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {filteredLogs.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "52px 20px", color: "#aaa", background: "#fafafa", borderRadius: 16, border: "1px dashed #e8e8e8" }}>
+          <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "52px 20px", color: "#aaa", background: "#fafafa", borderRadius: 16, border: "1px dashed #e8e8e8" }}>
             <div style={{ fontSize: 44, marginBottom: 12, filter: "grayscale(0.2)" }}>📍</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 4 }}>{logsSearch ? "No results found" : "Nothing logged yet"}</div>
             {!logsSearch && <div style={{ fontSize: 13, color: "#aaa" }}>Tap <strong>+ Log</strong> to start building your food diary</div>}
           </div>
-        ) : (
-          <>
-            {filteredLogs.map(e => (
-              e.isActivity ? (
-                <ActivityCard key={e.id} activity={e} isPrivate={e.isPrivate}
-                  onEdit={() => setEditingEntry(e)}
-                  onTogglePrivate={() => setEntries(prev => prev.map(en => en.id === e.id ? {...en, isPrivate: !en.isPrivate} : en))}
-                  onAddPhoto={dataUrl => setEntries(prev => prev.map(en => en.id === e.id ? {...en, photos: [...(en.photos||[]), dataUrl]} : en))}
-                />
-              ) : (
-                <EntryCard key={e.id} entry={e} isPrivate={e.isPrivate}
-                  onEdit={() => setEditingEntry(e)}
-                  onTogglePrivate={() => setEntries(prev => prev.map(en => en.id === e.id ? {...en, isPrivate: !en.isPrivate} : en))}
-                  onAddPhoto={dataUrl => setEntries(prev => prev.map(en => en.id === e.id ? {...en, photos: [...(en.photos||[]), dataUrl]} : en))}
-                />
-              )
-            ))}
-          </>
-        )}
+        ) : filteredLogs.map(e => (
+          <div key={e.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
+            {/* Photo — user's own if available, else generic */}
+            <div style={{ position: "relative", height: 120, overflow: "hidden", flexShrink: 0 }}>
+              <img src={(e.photos && e.photos.length > 0) ? e.photos[0] : getPlacePhoto(e)} alt={e.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={ev => { ev.target.style.display = "none"; ev.target.parentNode.style.background = "#f0f0f0"; }} />
+              {e.isPrivate && (
+                <span style={{ position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.55)", color: "#fff", fontSize: 9, borderRadius: 4, padding: "2px 6px", fontWeight: 600 }}>🔒 Private</span>
+              )}
+              <button onClick={() => setEditingEntry(e)}
+                title="Edit"
+                style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.85)", border: "1px solid #e8e8e8", borderRadius: 6, padding: "3px 7px", fontSize: 12, cursor: "pointer", color: "#555", lineHeight: 1 }}>
+                ✏️
+              </button>
+            </div>
+            {/* Info */}
+            <div style={{ padding: "10px 12px", flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 4 }}>
+                <a href={`https://www.google.com/maps/search/${encodeURIComponent(e.name + ' ' + (e.city || ''))}`}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={ev => ev.stopPropagation()}
+                  style={{ color: "#000", fontSize: 13, fontWeight: 700, textDecoration: "none", lineHeight: 1.3, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
+                  onMouseEnter={ev => ev.currentTarget.style.textDecoration = "underline"}
+                  onMouseLeave={ev => ev.currentTarget.style.textDecoration = "none"}>
+                  {e.name} <span style={{ color: "#4285f4", fontSize: 11, fontWeight: 400 }}>↗</span>
+                </a>
+                <StarRating value={e.rating} size={11} />
+              </div>
+              <div style={{ fontSize: 11, color: "#888", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                {e.city}{e.state ? `, ${e.state}` : ""} · {e.cuisine || e.type}
+              </div>
+              {e.difficulty && (
+                <span style={{ fontSize: 10, fontWeight: 600, color: "#555", background: "#f0f0f0", borderRadius: 4, padding: "2px 6px", alignSelf: "flex-start" }}>{e.difficulty}</span>
+              )}
+              {e.verdict && <VerdictBadge verdict={e.verdict} />}
+              {e.notes && (
+                <div style={{ fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4, marginTop: 2 }}>
+                  "{e.notes.length > 80 ? e.notes.slice(0, 80) + "…" : e.notes}"
+                </div>
+              )}
+              <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <PhotoStrip photos={e.photos || []} inline />
+                <label style={{ background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8, padding: "5px 10px",
+                  color: "#555", fontSize: 11, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  📷
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={ev => {
+                      const file = ev.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = re => setEntries(prev => prev.map(en => en.id === e.id ? {...en, photos: [...(en.photos||[]), re.target.result]} : en));
+                      reader.readAsDataURL(file);
+                      ev.target.value = "";
+                    }} />
+                </label>
+                <button onClick={() => setEntries(prev => prev.map(en => en.id === e.id ? {...en, isPrivate: !en.isPrivate} : en))}
+                  style={{ background: "none", border: "none", padding: 0, fontSize: 10, color: "#aaa", cursor: "pointer", textAlign: "left", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                  {e.isPrivate ? "🔒 Private" : "🌐 Public"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -4995,8 +5961,8 @@ function EditProfileModal({ user, onClose, onSave }) {
     reader.readAsDataURL(file);
   };
 
-  const inputStyle = { width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-    padding: "10px 12px", fontSize: 14, color: "#000", outline: "none", boxSizing: "border-box" };
+  const inputStyle = { width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+    padding: "11px 12px", fontSize: 14, color: "#000", outline: "none", boxSizing: "border-box" };
   const labelStyle = { fontSize: 11, fontWeight: 600, color: "#888", letterSpacing: "0.06em",
     textTransform: "uppercase", display: "block", marginBottom: 6 };
 
@@ -5006,10 +5972,12 @@ function EditProfileModal({ user, onClose, onSave }) {
       <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 20, padding: "28px 28px 24px",
         width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto",
         animation: "slideUp 0.22s ease", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Edit Profile</h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "#888", cursor: "pointer" }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, color: "#aaa", cursor: "pointer" }}>×</button>
         </div>
+
+        <div style={{ height: 1, background: "#f0f0f0", marginBottom: 20 }} />
 
         {/* Avatar */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
@@ -5068,22 +6036,114 @@ function EditProfileModal({ user, onClose, onSave }) {
   );
 }
 
+// ─── NOTIFICATION PANEL ──────────────────────────────────────────────────────
+function NotificationPanel({ notifications, onClose, onMarkAllRead, onGoToTrip }) {
+  const unreadCount = notifications.filter(n => !n.read).length;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", flexDirection: "column" }}
+      onClick={onClose}>
+      <div style={{ position: "absolute", top: 57, right: 0, left: 0, maxWidth: 420, margin: "0 auto",
+        background: "#fff", border: "1px solid #efefef", borderRadius: "0 0 16px 16px",
+        boxShadow: "0 8px 30px rgba(0,0,0,0.12)", overflow: "hidden", animation: "slideUp 0.18s ease" }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid #f0f0f0",
+          display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "#000" }}>
+            Notifications {unreadCount > 0 && <span style={{ background: "#000", color: "#fff", borderRadius: 20,
+              fontSize: 10, padding: "1px 7px", marginLeft: 6, fontWeight: 700 }}>{unreadCount}</span>}
+          </div>
+          {unreadCount > 0 && (
+            <button onClick={onMarkAllRead} style={{ background: "none", border: "none", fontSize: 11,
+              color: "#888", cursor: "pointer", padding: 0 }}>Mark all read</button>
+          )}
+        </div>
+        <div style={{ maxHeight: 360, overflowY: "auto" }}>
+          {notifications.length === 0 ? (
+            <div style={{ padding: "32px 20px", textAlign: "center", color: "#aaa" }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🔔</div>
+              <div style={{ fontSize: 13 }}>No notifications yet</div>
+            </div>
+          ) : notifications.map(n => (
+            <div key={n.id} onClick={() => { if (n.tripId && onGoToTrip) { onGoToTrip(n.tripId, n.section); onClose(); } }}
+              style={{ padding: "12px 18px", borderBottom: "1px solid #f8f8f8",
+                background: n.read ? "#fff" : "#fafafa",
+                cursor: n.tripId ? "pointer" : "default",
+                display: "flex", gap: 12, alignItems: "flex-start",
+                transition: "background 0.15s" }}>
+              <div style={{ fontSize: 20, flexShrink: 0, marginTop: 1 }}>{n.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: "#000", fontWeight: n.read ? 400 : 600, lineHeight: 1.4 }}>{n.title}</div>
+                <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>{n.body}</div>
+              </div>
+              {!n.read && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#000",
+                flexShrink: 0, marginTop: 6 }} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildNotifications(savedTrips, sharedTrips) {
+  const notes = [];
+  const today = new Date();
+  (savedTrips || []).filter(t => !t.completed).forEach(t => {
+    if (t.startDate) {
+      const start = new Date(t.startDate + "T12:00:00");
+      const days = Math.round((start - today) / 86400000);
+      if (days >= 0 && days <= 7) {
+        notes.push({ id: "trip_" + t.id, icon: "✈️", title: `${t.destination} in ${days === 0 ? "today!" : days + (days === 1 ? " day" : " days")}`,
+          body: "Your trip is coming up. Make sure you're packed!", tripId: t.id, section: "packList", read: false });
+      }
+    }
+    if ((t.bookRemind || []).length > 0) {
+      const unbooked = (t.bookRemind || []).filter(r => !r.done);
+      if (unbooked.length > 0) {
+        notes.push({ id: "book_" + t.id, icon: "📋", title: `${unbooked.length} booking${unbooked.length > 1 ? "s" : ""} to do for ${t.destination}`,
+          body: unbooked.slice(0, 2).map(r => r.text).join(" · "), tripId: t.id, section: "bookRemind", read: false });
+      }
+    }
+    const packTotal = (t.packList || []).length;
+    const packDone = (t.packList || []).filter(x => x.packed).length;
+    if (packTotal > 0 && packDone === packTotal) {
+      notes.push({ id: "packed_" + t.id, icon: "🎒", title: `All packed for ${t.destination}!`,
+        body: "You're ready. Bon voyage!", tripId: t.id, section: "packList", read: true });
+    }
+  });
+  (sharedTrips || []).slice(0, 2).forEach(t => {
+    const sharer = ALL_USERS.find(u => u.id === t.sharedBy);
+    notes.push({ id: "shared_" + t.id, icon: "👥", title: `${sharer?.name || "A friend"} shared a trip with you`,
+      body: `${t.destination} · ${t.days} day${t.days !== 1 ? "s" : ""}`, read: true });
+  });
+  return notes;
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function MainApp({ user, onLogout }) {
   const [tab, setTab] = useState("home");
   const [showNetwork, setShowNetwork] = useState(false);
-  const [entries, setEntries] = useState([
-    ...MOCK_ENTRIES,
-    ...MOCK_ACTIVITIES.map(a => ({
-      ...a,
-      type: a.category, // hiking, kids, scenic, outdoor
-      verdict: "must_go",
-      cuisine: null,
-      dish: null,
-      rating: null,
-      isActivity: true
-    }))
-  ]);
+  const [entries, setEntries] = useState(() => {
+    try {
+      const saved = localStorage.getItem("travelslate_entries");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      ...MOCK_ENTRIES,
+      ...MOCK_ACTIVITIES.map(a => ({
+        ...a,
+        type: a.category,
+        verdict: "must_go",
+        cuisine: null,
+        dish: null,
+        rating: null,
+        isActivity: true
+      }))
+    ];
+  });
+  useEffect(() => {
+    try { localStorage.setItem("travelslate_entries", JSON.stringify(entries)); } catch {}
+  }, [entries]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [prefillEntry, setPrefillEntry] = useState(null);
   const [showTripModal, setShowTripModal] = useState(false);
@@ -5112,10 +6172,88 @@ function MainApp({ user, onLogout }) {
       ]}
     }
   ]); // trips shared by friends
-  const [savedTrips, setSavedTrips] = useState([]);
+  const [savedTrips, setSavedTrips] = useState([
+    {
+      id: "demo_past_1", destination: "Amsterdam, Netherlands", days: 7, kids: false,
+      startDate: "2023-05-15", endDate: "2023-05-22",
+      createdAt: "5/15/2023", completed: true,
+      invitedFriends: [], sharedWith: [], notes: "Canals, museums, and incredible food.",
+      packList: [], bookRemind: [], collaboratorSuggestions: [], ideasNotes: [],
+      plan: { days: [
+        { day: 1, city: "Amsterdam", entries: [
+          { id: "ap1e1", name: "Rijksmuseum", type: "scenic", city: "Amsterdam", verdict: "must_go", visited: true },
+          { id: "ap1e2", name: "De Kas Restaurant", type: "restaurant", city: "Amsterdam", verdict: "must_go", cuisine: "Dutch", visited: true },
+        ]},
+      ]}
+    },
+    {
+      id: "demo_past_2", destination: "Paris, France", days: 7, kids: false,
+      startDate: "2022-06-10", endDate: "2022-06-17",
+      createdAt: "6/10/2022", completed: true,
+      invitedFriends: [], sharedWith: [], notes: "City of light. Croissants every morning.",
+      packList: [], bookRemind: [], collaboratorSuggestions: [], ideasNotes: [],
+      plan: { days: [
+        { day: 1, city: "Paris", entries: [
+          { id: "pp1e1", name: "Eiffel Tower", type: "scenic", city: "Paris", verdict: "must_go", visited: true },
+          { id: "pp1e2", name: "Café de Flore", type: "cafe", city: "Paris", verdict: "must_go", cuisine: "French", visited: true },
+        ]},
+      ]}
+    },
+    {
+      id: "demo_collab_1", destination: "Boulder, CO", days: 2, kids: false,
+      startDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+      endDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+      createdAt: new Date().toLocaleDateString(), completed: false,
+      invitedFriends: ["u2", "u3"], sharedWith: [],
+      notes: "Weekend trip to Boulder — Pearl St + hiking",
+      packList: [
+        { id: "pp1", text: "Hiking boots", packed: true },
+        { id: "pp2", text: "Sunscreen", packed: false },
+        { id: "pp3", text: "Water bottle", packed: false },
+      ],
+      bookRemind: [
+        { id: "br1", text: "Book Airbnb near Pearl St", done: false },
+        { id: "br2", text: "Reserve Frasca Food & Wine", done: false },
+      ],
+      collaboratorSuggestions: [
+        { id: "cs1", userId: "u2", name: "Hop Alley", type: "restaurant", city: "Denver", state: "CO", dayIdx: 0 },
+        { id: "cs2", userId: "u3", name: "Chautauqua Park Trailhead", type: "hiking", city: "Boulder", state: "CO", dayIdx: 1 },
+      ],
+      plan: { days: [
+        { day: 1, city: "Boulder", name: "Day 1 — Pearl Street", activity: "Pearl Street Mall + lunch", notes: "Start with coffee at Boxcar, then wander Pearl St.", entries: [
+          { id: "dc1e1", name: "Boxcar Coffee Roasters", type: "cafe", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Coffee" },
+          { id: "dc1e2", name: "The Kitchen", type: "restaurant", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "American" },
+        ]},
+        { day: 2, city: "Boulder", name: "Day 2 — Outdoors", activity: "Hiking + brewery", notes: "Chautauqua in the morning, Avery after.", entries: [
+          { id: "dc2e1", name: "Avery Brewing", type: "brewery", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Craft Beer" },
+        ]},
+      ]}
+    }
+  ]);
   const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [focusTripSection, setFocusTripSection] = useState(null); // { tripId, section }
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [readNotifIds, setReadNotifIds] = useState(new Set());
+  const [savedBookmarks, setSavedBookmarks] = useState(new Set()); // entry ids bookmarked in Explore
+
+  // Auto-move trips to past when their end date has passed
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    setSavedTrips(prev => prev.map(t => {
+      if (t.completed) return t;
+      if (!t.endDate) return t;
+      const end = new Date(t.endDate + "T12:00:00");
+      end.setHours(0, 0, 0, 0);
+      return end < today ? { ...t, completed: true } : t;
+    }));
+  }, []);
+
+  const notifications = buildNotifications(savedTrips, sharedTrips).map(n => ({
+    ...n, read: readNotifIds.has(n.id) || n.read
+  }));
+  const unreadNotifCount = notifications.filter(n => !n.read).length;
 
   if (viewProfile) {
     const user = ALL_USERS.find(u => u.id === viewProfile);
@@ -5138,63 +6276,91 @@ function MainApp({ user, onLogout }) {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#fafafa", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000" }}>
+    <div style={{ minHeight: "100vh", background: "#FCFAF8", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000" }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&display=swap');
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #f0f0f0; } ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
-        input:focus, textarea:focus { border-color: #000 !important; outline: none; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #ede8e2; } ::-webkit-scrollbar-thumb { background: #c5b9af; border-radius: 4px; }
+        input:focus, textarea:focus { border-color: #3d1f14 !important; outline: none; }
         button { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         button:active { opacity: 0.75; transform: scale(0.97); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .home-photo-scroll::-webkit-scrollbar { display: none; }
       `}</style>
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #efefef", padding: "13px 20px", position: "sticky", top: 0, zIndex: 50, boxShadow: "0 1px 8px rgba(0,0,0,0.04)" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #ede8e2", padding: "12px 20px", position: "sticky", top: 0, zIndex: 50, boxShadow: "0 1px 10px rgba(61,31,20,0.06)" }}>
+        <div className="ts-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#000", fontSize: 21, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1 }}>Travel Slate</div>
-            <div style={{ fontSize: 10, color: "#bbb", letterSpacing: "0.12em", textTransform: "uppercase", marginTop: 2 }}>Your food & travel diary</div>
+            <div className="ts-brand-name" style={{ fontFamily: "'Lora', 'Georgia', serif", color: "#1a0a00", fontSize: 20, fontWeight: 700, letterSpacing: "0.01em", lineHeight: 1 }}>Travel Slate</div>
+            <div className="ts-brand-sub" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 9, color: "#b09e94", letterSpacing: "0.14em", textTransform: "uppercase", marginTop: 3 }}>Your Food &amp; Travel Diary</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={() => setShowAddModal(true)}
-              style={{ background: "#000", border: "none", borderRadius: 8, padding: "8px 16px",
-                color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
+            <button className="ts-log-header" onClick={() => setShowAddModal(true)}
+              style={{ background: "#7B2D42", border: "none", borderRadius: 10, padding: "9px 18px",
+                color: "#fff", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                fontSize: 13, cursor: "pointer", fontWeight: 600, letterSpacing: "0.01em" }}>
               + Log
             </button>
-            <button onClick={() => setShowNetwork(true)}
-              style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 8, padding: "8px 10px",
-                color: "#555", fontSize: 12, cursor: "pointer" }}
+            {/* Notification bell */}
+            <button className="ts-header-btn" onClick={() => setShowNotifications(v => !v)}
+              style={{ position: "relative", background: showNotifications ? "#7B2D42" : "none",
+                border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 10px",
+                color: showNotifications ? "#fff" : "#7a6055", fontSize: 14, cursor: "pointer" }}
+              title="Notifications">
+              🔔
+              {unreadNotifCount > 0 && (
+                <span style={{ position: "absolute", top: 4, right: 4, width: 7, height: 7,
+                  background: "#e53935", borderRadius: "50%", border: "1.5px solid #fff" }} />
+              )}
+            </button>
+            <button className="ts-header-btn" onClick={() => setShowNetwork(true)}
+              style={{ background: "none", border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 11px",
+                color: "#7a6055", fontSize: 14, cursor: "pointer" }}
               title="Network">
               👥
             </button>
-            <button onClick={onLogout}
-              style={{ background: "none", border: "1px solid #efefef", borderRadius: 8, padding: "8px 14px",
-                color: "#888", fontSize: 12, cursor: "pointer" }}>
+            <button className="ts-header-btn" onClick={onLogout}
+              style={{ background: "none", border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 14px",
+                color: "#9e8878", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                fontSize: 12, cursor: "pointer" }}>
               Logout
             </button>
           </div>
         </div>
       </div>
 
+      {/* Notification Panel */}
+      {showNotifications && (
+        <NotificationPanel
+          notifications={notifications}
+          onClose={() => setShowNotifications(false)}
+          onMarkAllRead={() => setReadNotifIds(new Set(notifications.map(n => n.id)))}
+          onGoToTrip={(tripId, section) => { setFocusTripSection({ tripId, section }); setTab("trips"); }}
+        />
+      )}
+
       {/* Nav */}
-      <div style={{ borderBottom: "1px solid #efefef", background: "#fff", position: "sticky", top: 57, zIndex: 40, padding: "8px 16px 0" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", gap: 4 }}>
+      <div style={{ borderBottom: "1px solid #ede8e2", background: "#fff", position: "sticky", top: 57, zIndex: 40, padding: "0 16px" }}>
+        <div className="ts-inner" style={{ display: "flex" }}>
           {[["home","🏠 Home"],["explore","🔍 Explore"],["trips","✈️ Trips"],["mine","📍 My Logs"]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
-              style={{ flex: 1, border: "none", borderRadius: "10px 10px 0 0",
-                background: tab === id ? "#000" : "transparent",
-                color: tab === id ? "#fff" : "#888", padding: "10px 0 12px", cursor: "pointer",
-                fontSize: 11, fontWeight: tab === id ? 600 : 400,
+              className="ts-tab"
+              style={{ border: "none", borderBottom: tab === id ? "2.5px solid #3d1f14" : "2.5px solid transparent",
+                background: "transparent",
+                color: tab === id ? "#3d1f14" : "#9e8878", cursor: "pointer",
+                fontWeight: tab === id ? 700 : 400,
                 fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                transition: "all 0.2s", letterSpacing: tab === id ? "0.01em" : "normal" }}>
+                transition: "all 0.18s", letterSpacing: "0.02em" }}>
               {label}
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 80px" }}>
+      <div className="ts-content">
 
         {/* HOME TAB */}
         {tab === "home" && (
@@ -5206,6 +6372,8 @@ function MainApp({ user, onLogout }) {
             onGoToTrips={() => setTab("trips")}
             onGoToExplore={() => setTab("explore")}
             onGoToTrip={(tripId, section) => { setFocusTripSection({ tripId, section }); setTab("trips"); }}
+            onUpdateCoverPhoto={(tripId, photo) => setSavedTrips(prev => prev.map(t => t.id === tripId ? { ...t, coverPhoto: photo } : t))}
+            onViewProfile={setViewProfile}
           />
         )}
 
@@ -5214,6 +6382,8 @@ function MainApp({ user, onLogout }) {
           <ExploreTab
             entries={entries}
             savedTrips={savedTrips}
+            savedBookmarks={savedBookmarks}
+            onToggleBookmark={id => setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
             onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => {
               if (t.id !== tripId) return t;
               const updatedDays = t.plan?.days ? [...t.plan.days] : [];
@@ -5241,28 +6411,47 @@ function MainApp({ user, onLogout }) {
 
         {/* MY TRIPS TAB */}
         {tab === "trips" && (
-          <div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {importToLogsMsg && (
               <div style={{ background: "#000", color: "#fff", borderRadius: 8, padding: "12px 16px",
-                fontSize: 13, marginBottom: 16, textAlign: "center" }}>
+                fontSize: 13, textAlign: "center" }}>
                 {importToLogsMsg}
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#000" }}>My Trips</div>
-                <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>{savedTrips.length} saved</div>
+
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ paddingTop: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#000" }}>My Trips ✈️</div>
+                <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>Plan, track and share your travels</div>
               </div>
               <button onClick={() => setShowTripModal(true)}
-                style={{ background: "#000", border: "none", borderRadius: 8, padding: "10px 16px",
-                  color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                style={{ background: "linear-gradient(135deg, #f0a882, #e87a4a)", border: "none",
+                  borderRadius: 50, padding: "10px 20px", color: "#fff", fontSize: 13, fontWeight: 600,
+                  cursor: "pointer", flexShrink: 0, marginTop: 4,
+                  boxShadow: "0 2px 8px rgba(232,122,74,0.35)" }}>
                 + Plan Trip
               </button>
             </div>
 
+            {/* Stats row */}
+            <div style={{ display: "flex", gap: 10 }}>
+              {[
+                { label: "Active", value: savedTrips.filter(t => !t.completed).length },
+                { label: "Places Planned", value: savedTrips.filter(t => !t.completed).flatMap(t => t.plan?.days?.flatMap(d => d.entries || d.items || []) || []).length },
+                { label: "Past Trips", value: savedTrips.filter(t => t.completed).length },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, background: "#fff", border: "1px solid #efefef", borderRadius: 14,
+                  padding: "16px 12px", textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#000" }}>{s.value}</div>
+                  <div style={{ fontSize: 10, color: "#888", marginTop: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
             {/* Planning section */}
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#000", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
                 Planning
               </div>
               {savedTrips.filter(t => !t.completed).length === 0 ? (
@@ -5276,7 +6465,7 @@ function MainApp({ user, onLogout }) {
                   {savedTrips.filter(t => !t.completed).map(trip => (
                     <TripCard key={trip.id} trip={trip} entries={entries}
                       onDelete={() => setSavedTrips(prev => prev.filter(t => t.id !== trip.id))}
-                      onComplete={() => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: true} : t))}
+                      onComplete={coverPhoto => setSavedTrips(prev => prev.map(t => t.id === trip.id ? { ...t, completed: true, ...(coverPhoto ? { coverPhoto } : {}) } : t))}
                       onInviteFriend={uid => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, invitedFriends: (t.invitedFriends||[]).includes(uid) ? (t.invitedFriends||[]).filter(x=>x!==uid) : [...(t.invitedFriends||[]), uid]} : t))}
                       onAddPlaces={() => setShowTripModal(true)}
                       onUpdate={updated => setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t))}
@@ -5302,9 +6491,10 @@ function MainApp({ user, onLogout }) {
                         }
                       }}
                       onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
-                      onImportSingle={entry => setPrefillEntry(entry)}
+                      onImportSingle={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
                       friendState={friendState}
                       allUsers={ALL_USERS}
+                      onViewProfile={setViewProfile}
                     />
                   ))}
                 </div>
@@ -5313,8 +6503,8 @@ function MainApp({ user, onLogout }) {
 
             {/* Friends shared trips */}
             {sharedTrips.filter(t => t.sharedBy !== "u1").length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#000", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
                   Shared With You
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -5322,7 +6512,7 @@ function MainApp({ user, onLogout }) {
                     const sharer = ALL_USERS.find(u => u.id === trip.sharedBy);
                     return (
                       <SharedTripCard key={trip.id} trip={trip} sharer={sharer}
-                        onImportToLogs={entry => setPrefillEntry(entry)}
+                        onImportToLogs={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
                       />
                     );
                   })}
@@ -5333,7 +6523,7 @@ function MainApp({ user, onLogout }) {
             {/* Past section */}
             {savedTrips.filter(t => t.completed).length > 0 && (
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#888", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#000", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
                   Past Trips
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -5343,7 +6533,7 @@ function MainApp({ user, onLogout }) {
                       past
                       onReactivate={() => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: false} : t))}
                       onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
-                      onImportSingle={entry => setPrefillEntry(entry)}
+                      onImportSingle={entry => importSingleEntry(entry, setEntries, setImportToLogsMsg)}
                       onShare={userId => {
                         const friend = ALL_USERS.find(u => u.id === userId);
                         let wasShared = false;
@@ -5364,6 +6554,7 @@ function MainApp({ user, onLogout }) {
                       }}
                       friendState={friendState}
                       allUsers={ALL_USERS}
+                      onViewProfile={setViewProfile}
                     />
                   ))}
                 </div>
@@ -5407,7 +6598,12 @@ function MainApp({ user, onLogout }) {
         editTrip={editingTrip || null}
         onSaveTrip={trip => setSavedTrips(prev => [trip, ...prev])}
         onUpdateTrip={updated => { setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t)); setEditingTrip(null); }} />}
-      
+
+      {/* Floating Log button — mobile only */}
+      <button className="ts-fab" onClick={() => setShowAddModal(true)}>
+        ＋ Log
+      </button>
+
     </div>
   );
 }
@@ -5519,8 +6715,8 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
       <input type={type} value={form[field]}
         onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
         placeholder={placeholder}
-        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
-          padding: "12px 14px", color: "#000", fontSize: 14,
+        style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 10,
+          padding: "11px 12px", color: "#000", fontSize: 14,
           marginTop: 5, boxSizing: "border-box", outline: "none", transition: "border-color 0.2s" }}
         onFocus={e => e.target.style.borderColor = "#000"}
         onBlur={e => e.target.style.borderColor = "#efefef"}
@@ -5565,7 +6761,7 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
 
         {/* Google Sign-in */}
         <button onClick={() => { setLoading(true); setTimeout(() => { setLoading(false); onAuth({ id: "u1", email: "sandy@gmail.com", name: "Sandy S.", username: "sandy_explores" }); }, 1000); }}
-          style={{ width: "100%", background: "#fff", border: "1px solid #dbdbdb", borderRadius: 8, padding: "12px 16px",
+          style={{ width: "100%", background: "#fff", border: "1px solid #dbdbdb", borderRadius: 10, padding: "11px 16px",
             color: "#000", fontSize: 14, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20,
             boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -5585,15 +6781,15 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
 
 
         {error && (
-          <div style={{ background: "#450a0a", border: "1px solid #dc2626", borderRadius: 8, padding: "10px 14px",
-            color: "#f87171", fontSize: 13, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginBottom: 16 }}>
+          <div style={{ background: "#fff0f0", border: "1px solid #ffd0d0", borderRadius: 10, padding: "10px 14px",
+            color: "#cc0000", fontSize: 13, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginBottom: 16 }}>
             {error}
           </div>
         )}
 
         <button onClick={handleSubmit} disabled={loading}
           style={{ width: "100%", background: loading ? "#555" : "#000",
-            border: "none", borderRadius: 8, padding: "14px", color: "#fff",
+            border: "none", borderRadius: 10, padding: "14px", color: "#fff",
             fontSize: 15, fontWeight: 700, cursor: loading ? "wait" : "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             opacity: loading ? 0.7 : 1 }}>
           {loading ? "Authenticating…" : mode === "signup" ? "Create Account →" : "Sign In →"}

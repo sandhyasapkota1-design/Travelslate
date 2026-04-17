@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Travel Slate",
+  "name": "Travel Slate — Your Food & Travel Diary",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,16 +10,20 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "orientation": "portrait",
+  "theme_color": "#7B2D42",
+  "background_color": "#FCFAF8",
+  "description": "Log your food & travel experiences, plan trips, and share with friends."
 }
