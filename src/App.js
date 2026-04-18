@@ -6829,7 +6829,7 @@ function MainApp({ user, onLogout }) {
   const [showNetwork, setShowNetwork] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [entries, setEntries] = useState([]);
-  const [entriesLoaded, setEntriesLoaded] = useState(false);
+  const [entriesLoaded, setEntriesLoaded] = useState(false); // eslint-disable-line no-unused-vars
 
   // Load entries from Supabase on mount
   useEffect(() => {
@@ -6872,7 +6872,7 @@ function MainApp({ user, onLogout }) {
     }
   ]); // trips shared by friends
   const [savedTrips, setSavedTrips] = useState([]);
-  const [tripsLoaded, setTripsLoaded] = useState(false);
+  const [tripsLoaded, setTripsLoaded] = useState(false); // eslint-disable-line no-unused-vars
 
   useEffect(() => {
     if (!user) return;
