@@ -6669,7 +6669,7 @@ function NotificationPanel({ notifications, onClose, onMarkAllRead, onGoToTrip }
   );
 }
 
-function buildNotifications(savedTrips, sharedTrips) {
+function buildNotifications(savedTrips, sharedTrips, pendingIncoming, acceptedByThem) {
   const notes = [];
   const today = new Date();
   (savedTrips || []).filter(t => !t.completed).forEach(t => {
@@ -6699,6 +6699,18 @@ function buildNotifications(savedTrips, sharedTrips) {
     const sharer = ALL_USERS.find(u => u.id === t.sharedBy);
     notes.push({ id: "shared_" + t.id, icon: "👥", title: `${sharer?.name || "A friend"} shared a trip with you`,
       body: `${t.destination} · ${t.days} day${t.days !== 1 ? "s" : ""}`, read: true });
+  });
+  // Friend request notifications
+  (pendingIncoming || []).forEach(req => {
+    notes.push({ id: "freq_" + req.from, icon: "👤",
+      title: `${req.profile?.name || "Someone"} sent you a friend request`,
+      body: `@${req.profile?.username || req.from} wants to connect`, read: false });
+  });
+  // Accepted request notifications
+  (acceptedByThem || []).forEach(f => {
+    notes.push({ id: "facc_" + f.id, icon: "🤝",
+      title: `${f.profile?.name || "A traveler"} accepted your friend request`,
+      body: `You and @${f.profile?.username || f.id} are now friends`, read: false });
   });
   return notes;
 }
@@ -6876,6 +6888,7 @@ function MainApp({ user, onLogout }) {
   const [friendState, setFriendState] = useState({});
   const [pendingIncoming, setPendingIncoming] = useState([]);
   const [friendProfiles, setFriendProfiles] = useState([]);
+  const [acceptedByThem, setAcceptedByThem] = useState([]); // my sent requests that were accepted
 
   // Load real friendships from Supabase
   useEffect(() => {
@@ -6887,6 +6900,7 @@ function MainApp({ user, onLogout }) {
         const state = {};
         const incoming = [];
         const profiles = [];
+        const accepted = [];
         data.forEach(f => {
           const isSender = f.user_id === user.id;
           const otherId = isSender ? f.friend_id : f.user_id;
@@ -6894,6 +6908,7 @@ function MainApp({ user, onLogout }) {
           if (f.status === "accepted") {
             state[otherId] = "friend";
             if (otherProfile) profiles.push(otherProfile);
+            if (isSender) accepted.push({ id: otherId, profile: otherProfile });
           } else if (f.status === "pending") {
             if (isSender) state[otherId] = "pending";
             else incoming.push({ from: otherId, profile: otherProfile });
@@ -6902,6 +6917,7 @@ function MainApp({ user, onLogout }) {
         setFriendState(state);
         setPendingIncoming(incoming);
         setFriendProfiles(profiles);
+        setAcceptedByThem(accepted);
       });
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -6980,7 +6996,7 @@ function MainApp({ user, onLogout }) {
     }));
   }, []);
 
-  const notifications = buildNotifications(savedTrips, sharedTrips).map(n => ({
+  const notifications = buildNotifications(savedTrips, sharedTrips, pendingIncoming, acceptedByThem).map(n => ({
     ...n, read: readNotifIds.has(n.id) || n.read
   }));
   const unreadNotifCount = notifications.filter(n => !n.read).length;
