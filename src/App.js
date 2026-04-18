@@ -1567,7 +1567,6 @@ function DestinationAutocomplete({ value, onChange, onSelect, placeholder, style
 }
 
 // ─── TRIP PLANNER MODAL ──────────────────────────────────────────────────────
-const HARDCODED_API_KEY = ""; // key moved to .env.local → REACT_APP_ANTHROPIC_KEY
 
 function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTrip, editTrip }) {
   const isEditing = !!editTrip;
@@ -1610,24 +1609,14 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
       const dest = manualDestination || "the destination";
       const distUnit = usesImperial(dest) ? "miles" : "km";
       const distLabel = distUnit === "miles" ? "mi" : "km";
-      // TODO: Move this call to a backend proxy so the API key is never
-      // sent in browser network traffic. See: https://docs.anthropic.com/en/api/getting-started
-      const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
-      if (!apiKey) throw new Error("No API key — paste your sk-ant-... key into HARDCODED_API_KEY at the top of the file.");
-
       // Include any places already manually added to sections
       const existingPlaces = manualSections
         .flatMap(s => (s.items || []).map(item => `${item.name}${item.city ? " (" + item.city + ")" : ""} — already assigned to ${s.name}`))
         .join("\n");
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/generate-itinerary", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 3500,
@@ -4258,19 +4247,12 @@ function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, fri
       const dest = trip.destination || "the destination";
       const distUnit = usesImperial(dest) ? "miles" : "km";
       const distLabel = distUnit === "miles" ? "mi" : "km";
-      const apiKey = HARDCODED_API_KEY || process.env.REACT_APP_ANTHROPIC_KEY || "";
-      if (!apiKey) throw new Error("No API key — paste your sk-ant-... key into HARDCODED_API_KEY.");
       const existingPlaces = trip.plan.days
         .flatMap(d => (d.entries || []).map(e => `${e.name}${e.city ? " (" + e.city + ")" : ""}`))
         .join(", ");
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/generate-itinerary", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 3500,
