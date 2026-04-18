@@ -2806,33 +2806,67 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
 }
 
 // ─── NETWORK TAB ─────────────────────────────────────────────────────────────
-function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming }) {
+function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming, currentUser, friendProfiles }) {
   const [search, setSearch] = useState("");
-  const [networkSection, setNetworkSection] = useState("friends"); // friends | activity | discover
-  const allUsers = [...MOCK_USERS.slice(1), ...MOCK_DISCOVER];
-  const friends = allUsers.filter(u => friendState[u.id] === "friend");
-  const pendingOutgoing = allUsers.filter(u => friendState[u.id] === "pending");
+  const [networkSection, setNetworkSection] = useState("friends");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const searchDebounce = useRef(null);
 
-  const searchResults = search.trim().length > 1
-    ? allUsers.filter(u =>
-        u.username.toLowerCase().includes(search.toLowerCase()) ||
-        u.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : [];
+  const friends = friendProfiles || [];
+  const pendingOutgoing = Object.entries(friendState)
+    .filter(([, s]) => s === "pending")
+    .map(([id]) => ({ id }));
 
-  const getStateBtn = (user) => {
-    const state = friendState[user.id];
+  useEffect(() => {
+    if (search.trim().length < 2) { setSearchResults([]); return; }
+    clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(async () => {
+      setSearching(true);
+      const { data } = await supabase.from("profiles").select("*")
+        .or(`username.ilike.%${search.trim()}%,name.ilike.%${search.trim()}%`)
+        .neq("id", currentUser?.id)
+        .limit(10);
+      setSearchResults(data || []);
+      setSearching(false);
+    }, 350);
+  }, [search, currentUser?.id]);
+
+  const sendRequest = async (profileId) => {
+    setFriendState(s => ({ ...s, [profileId]: "pending" }));
+    await supabase.from("friendships").insert({ user_id: currentUser.id, friend_id: profileId, status: "pending" });
+  };
+
+  const cancelRequest = async (profileId) => {
+    setFriendState(s => { const n = { ...s }; delete n[profileId]; return n; });
+    await supabase.from("friendships").delete().eq("user_id", currentUser.id).eq("friend_id", profileId);
+  };
+
+  const acceptRequest = async (req) => {
+    await supabase.from("friendships").update({ status: "accepted" }).eq("user_id", req.from).eq("friend_id", currentUser.id);
+    setFriendState(s => ({ ...s, [req.from]: "friend" }));
+    setPendingIncoming(p => p.filter(r => r.from !== req.from));
+    if (req.profile) friendProfiles.push(req.profile);
+  };
+
+  const declineRequest = async (req) => {
+    await supabase.from("friendships").delete().eq("user_id", req.from).eq("friend_id", currentUser.id);
+    setPendingIncoming(p => p.filter(r => r.from !== req.from));
+  };
+
+  const getStateBtn = (u) => {
+    const state = friendState[u.id];
     if (state === "friend") return (
       <span style={{ color: "#4ade80", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#14532d", border: "1px solid #16a34a", borderRadius: 6, padding: "4px 10px" }}>✓ Friends</span>
     );
     if (state === "pending") return (
-      <button onClick={e => { e.stopPropagation(); setFriendState(s => { const n = {...s}; delete n[user.id]; return n; }); }}
+      <button onClick={e => { e.stopPropagation(); cancelRequest(u.id); }}
         style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
         Pending ✕
       </button>
     );
     return (
-      <button onClick={e => { e.stopPropagation(); setFriendState(s => ({...s, [user.id]: "pending"})); }}
+      <button onClick={e => { e.stopPropagation(); sendRequest(u.id); }}
         style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#f8f8f8", border: "1px solid #ddd", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
         + Add
       </button>
@@ -2903,9 +2937,9 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
       {search.trim().length > 1 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", marginBottom: 10 }}>
-            {searchResults.length} RESULT{searchResults.length !== 1 ? "S" : ""} FOR "{search.toUpperCase()}"
+            {searching ? "SEARCHING…" : `${searchResults.length} RESULT${searchResults.length !== 1 ? "S" : ""} FOR "${search.toUpperCase()}"`}
           </div>
-          {searchResults.length === 0 ? (
+          {!searching && searchResults.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0", color: "#444", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13 }}>
               No travelers found.<br />
               <span style={{ color: "#666", fontSize: 12 }}>Try a different username.</span>
@@ -2943,36 +2977,29 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
                   <div style={{ color: "#000", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", marginBottom: 10 }}>
                     ● {pendingIncoming.length} FRIEND REQUEST{pendingIncoming.length > 1 ? "S" : ""}
                   </div>
-                  {pendingIncoming.map(req => {
-                    const user = ALL_USERS.find(u => u.id === req.from);
-                    if (!user) return null;
-                    return (
-                      <div key={req.from} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 16px", marginBottom: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: 38, height: 38, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                            {user.avatar}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15 }}>{user.name}</div>
-                            <div style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>@{user.username}</div>
-                          </div>
-                          <div style={{ display: "flex", gap: 7 }}>
-                            <button onClick={() => {
-                              setFriendState(s => ({...s, [req.from]: "friend"}));
-                              setPendingIncoming(p => p.filter(r => r.from !== req.from));
-                            }}
-                              style={{ background: "#4ade8022", border: "1px solid #4ade80", color: "#4ade80", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-                              Accept
-                            </button>
-                            <button onClick={() => setPendingIncoming(p => p.filter(r => r.from !== req.from))}
-                              style={{ background: "transparent", border: "1px solid #333", color: "#666", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-                              ✕
-                            </button>
-                          </div>
+                  {pendingIncoming.map(req => (
+                    <div key={req.from} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 16px", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 38, height: 38, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                          {req.profile?.avatar || "✈️"}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 15 }}>{req.profile?.name || "Traveler"}</div>
+                          <div style={{ color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>@{req.profile?.username || req.from}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 7 }}>
+                          <button onClick={() => acceptRequest(req)}
+                            style={{ background: "#4ade8022", border: "1px solid #4ade80", color: "#4ade80", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            Accept
+                          </button>
+                          <button onClick={() => declineRequest(req)}
+                            style={{ background: "transparent", border: "1px solid #333", color: "#666", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            ✕
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -3014,11 +3041,9 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
           {/* DISCOVER SECTION */}
           {networkSection === "discover" && (
             <div>
-              <div style={{ color: "#555", fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.06em", marginBottom: 14 }}>TRAVELERS YOU MIGHT KNOW</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {MOCK_DISCOVER.filter(u => friendState[u.id] !== "friend").map(u => (
-                  <UserRow key={u.id} user={u} onClick={() => {}} />
-                ))}
+              <div style={{ textAlign: "center", padding: "32px 0", color: "#444", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 13, lineHeight: 1.8 }}>
+                Search for travelers by username above<br />
+                <span style={{ color: "#666", fontSize: 12 }}>to find and add friends.</span>
               </div>
               <div style={{ background: "#0d1a0d", border: "1px solid #1a3a1a", borderRadius: 12, padding: "16px 18px", marginTop: 20 }}>
                 <div style={{ color: "#4ade80", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, letterSpacing: "0.08em", marginBottom: 6 }}>✦ ZERO SPONSORS</div>
@@ -6848,10 +6873,37 @@ function MainApp({ user, onLogout }) {
   const [showTripModal, setShowTripModal] = useState(false);
   const [editingTrip, setEditingTrip] = useState(null);
   const [viewProfile, setViewProfile] = useState(null);
-  // u2, u3, u7, u8 are confirmed friends; u4,u5,u6 are discoverable
-  const [friendState, setFriendState] = useState({ u2: "friend", u3: "friend", u7: "friend", u8: "friend" });
-  // Simulate incoming request from u4
-  const [pendingIncoming, setPendingIncoming] = useState([{ from: "u4" }]);
+  const [friendState, setFriendState] = useState({});
+  const [pendingIncoming, setPendingIncoming] = useState([]);
+  const [friendProfiles, setFriendProfiles] = useState([]);
+
+  // Load real friendships from Supabase
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("friendships").select("*, profiles!friendships_friend_id_fkey(*), requester:profiles!friendships_user_id_fkey(*)")
+      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+      .then(({ data }) => {
+        if (!data) return;
+        const state = {};
+        const incoming = [];
+        const profiles = [];
+        data.forEach(f => {
+          const isSender = f.user_id === user.id;
+          const otherId = isSender ? f.friend_id : f.user_id;
+          const otherProfile = isSender ? f.profiles : f.requester;
+          if (f.status === "accepted") {
+            state[otherId] = "friend";
+            if (otherProfile) profiles.push(otherProfile);
+          } else if (f.status === "pending") {
+            if (isSender) state[otherId] = "pending";
+            else incoming.push({ from: otherId, profile: otherProfile });
+          }
+        });
+        setFriendState(state);
+        setPendingIncoming(incoming);
+        setFriendProfiles(profiles);
+      });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editingEntry, setEditingEntry] = useState(null);
   const [showImport, setShowImport] = useState(false);
@@ -7327,6 +7379,8 @@ function MainApp({ user, onLogout }) {
                 setFriendState={setFriendState}
                 pendingIncoming={pendingIncoming}
                 setPendingIncoming={setPendingIncoming}
+                currentUser={currentUser}
+                friendProfiles={friendProfiles}
               />
             </div>
           </div>
