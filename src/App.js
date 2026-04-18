@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { supabase } from "./lib/supabase";
 
 // ─── MOCK DATA ───────────────────────────────────────────────────────────────
 const MOCK_USERS = [
@@ -1711,7 +1712,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
   };
   const deleteSection = (sectionId) => setManualSections(s => s.filter(sec => sec.id !== sectionId));
 
-  const friendEntries = entries.filter(e => e.userId !== "u1");
+  const friendEntries = entries;
   const manualSearchResults = manualSearch.trim().length >= 2
     ? friendEntries.filter(e =>
         e.name.toLowerCase().includes(manualSearch.toLowerCase()) ||
@@ -2569,7 +2570,7 @@ const TYPE_ICON = { restaurant: "🍽", hotel: "🏨", brewery: "🍺", cafe: "�
 const ACTION_COLOR = { log: "#e8c84a", verdict: "#4ade80", trip: "#60a5fa", dish: "#f4845f" };
 
 // eslint-disable-next-line no-unused-vars
-function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, setFriendState, onViewProfile, savedTrips, onAddToTrip }) {
+function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, setFriendState, onViewProfile, savedTrips, onAddToTrip, currentUserId }) {
   const [filter, setFilter] = useState("all");
   const allUsers = ALL_USERS;
   const friends = allUsers.filter(u => friendState[u.id] === "friend");
@@ -3043,7 +3044,7 @@ function AddDiaryModal({ onClose, onSave, entries }) {
     linkedEntries: []
   });
 
-  const myPlaces = entries.filter(e => e.userId === "u1");
+  const myPlaces = entries;
   const [showLinkPicker, setShowLinkPicker] = useState(false);
 
   const toggleLink = (eid) => {
@@ -5347,7 +5348,7 @@ function getPlacePhoto(entry) {
 }
 
 // ─── EXPLORE TAB COMPONENT ───────────────────────────────────────────────────
-function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBookmarks, onToggleBookmark }) {
+function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBookmarks, onToggleBookmark, currentUserId }) {
   const [exploreTab, setExploreTab] = useState("network"); // network | foryou
   // Network filters
   const [networkCategory, setNetworkCategory] = useState("all");
@@ -5358,7 +5359,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
 
   const allUsers = ALL_USERS;
   // Friends entries only (not current user u1)
-  const networkEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity);
+  const networkEntries = entries.filter(e => e.userId !== currentUserId && !e.isActivity);
 
   const filteredNetwork = networkEntries.filter(e => {
     if (networkSearch.trim()) {
@@ -5389,7 +5390,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
   });
 
   // "For You" recommendations: must_go entries your friends logged that you haven't logged
-  const myLoggedNames = new Set(entries.filter(e => e.userId === "u1").map(e => e.name.toLowerCase()));
+  const myLoggedNames = new Set(entries.filter(e => e.userId === currentUserId).map(e => e.name.toLowerCase()));
   const forYouEntries = networkEntries
     .filter(e => e.verdict === "must_go" && !myLoggedNames.has(e.name.toLowerCase()))
     .reduce((acc, e) => { // deduplicate by name
@@ -5401,7 +5402,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
 
   // For hiking/kids/activities in network tab, use MOCK_ACTIVITIES
   const networkActivities = entries.filter(e => {
-    if (e.userId === "u1") return false; // exclude own entries
+    if (e.userId === currentUserId) return false;
     if (!e.isActivity) return false;
     if (networkCategory === "hiking") return e.type === "hiking";
     if (networkCategory === "kids") return e.type === "kids";
@@ -5789,10 +5790,10 @@ function HomeTab({ currentUser, savedTrips, entries, allUsers, onGoToTrips, onGo
   ];
 
   const upcomingTrips = (savedTrips || []).filter(t => !t.completed).slice(0, 3);
-  const friendEntries = entries.filter(e => e.userId !== "u1" && !e.isActivity).slice(-4).reverse();
+  const friendEntries = entries.filter(e => e.userId !== currentUser.id && !e.isActivity).slice(-4).reverse();
   const pastTrips = (savedTrips || []).filter(t => t.completed).slice(-4).reverse();
   // eslint-disable-next-line no-unused-vars
-  const myEntries = entries.filter(e => e.userId === "u1");
+  const myEntries = entries.filter(e => e.userId === currentUser.id);
 
   const verdictLabel = { must_go: "Must Go", liked: "Liked", meh: "Meh", avoid: "Avoid" };
   const verdictBg    = { must_go: "#E8873A", liked: "#16a34a", meh: "#d97706", avoid: "#ef4444" };
@@ -6085,7 +6086,7 @@ function MyLogsTab({ entries, currentUser, savedTrips, setEntries, setEditingEnt
   const [logsCountryFilter, setLogsCountryFilter] = useState(null);
   const [showStatePicker, setShowStatePicker] = useState(false);
   const [logsStateFilter, setLogsStateFilter] = useState(null);
-  const myEntries = entries.filter(e => e.userId === "u1");
+  const myEntries = entries.filter(e => e.userId === currentUser.id);
   const savedEntries = savedBookmarks && savedBookmarks.size > 0
     ? entries.filter(e => savedBookmarks.has(e.id))
     : [];
@@ -6677,32 +6678,171 @@ function buildNotifications(savedTrips, sharedTrips) {
   return notes;
 }
 
+// ─── SUPABASE HELPERS ────────────────────────────────────────────────────────
+function dbEntryToLocal(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    city: row.city,
+    state: row.state,
+    country: row.country,
+    type: row.type,
+    cuisine: row.cuisine,
+    dish: row.dish,
+    rating: row.rating,
+    verdict: row.verdict,
+    notes: row.notes,
+    tags: row.tags || [],
+    photo_url: row.photo_url,
+    photos: row.photo_url ? [row.photo_url] : [],
+    createdAt: row.created_at,
+  };
+}
+
+function localEntryToDb(entry, userId) {
+  return {
+    user_id: userId,
+    name: entry.name,
+    city: entry.city || null,
+    state: entry.state || null,
+    country: entry.country || "USA",
+    type: entry.type || null,
+    cuisine: entry.cuisine || null,
+    dish: entry.dish || null,
+    rating: entry.rating || null,
+    verdict: entry.verdict || null,
+    notes: entry.notes || null,
+    tags: entry.tags || [],
+    photo_url: entry.photo_url || null,
+  };
+}
+
+function dbTripToLocal(row) {
+  const days = (row.trip_days || [])
+    .sort((a, b) => a.day_number - b.day_number)
+    .map(d => ({
+      day: d.day_number,
+      name: d.name || `Day ${d.day_number}`,
+      city: d.city,
+      notes: d.notes || "",
+      entries: (d.trip_places || [])
+        .sort((a, b) => a.order_idx - b.order_idx)
+        .map(p => ({
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          city: p.city,
+          state: p.state,
+          verdict: p.verdict,
+          cuisine: p.cuisine,
+          distanceFromPrev: p.distance_from_prev,
+          travelTimeFromPrev: p.travel_time_from_prev,
+          visited: p.visited || false,
+          entry_id: p.entry_id,
+        })),
+    }));
+
+  return {
+    id: row.id,
+    destination: row.destination,
+    days: days.length,
+    startDate: row.start_date || "",
+    endDate: row.end_date || "",
+    createdAt: new Date(row.created_at).toLocaleDateString(),
+    completed: row.completed || false,
+    notes: row.notes || "",
+    coverPhoto: row.cover_photo || null,
+    invitedFriends: (row.trip_members || []).filter(m => m.role === "collaborator").map(m => m.user_id),
+    sharedWith: (row.trip_members || []).filter(m => m.role === "viewer").map(m => m.user_id),
+    packList: (row.pack_list_items || []).sort((a, b) => a.order_idx - b.order_idx).map(i => ({ id: i.id, text: i.text, packed: i.packed })),
+    bookRemind: (row.book_remind_items || []).sort((a, b) => a.order_idx - b.order_idx).map(i => ({ id: i.id, text: i.text })),
+    collaboratorSuggestions: [],
+    ideasNotes: [],
+    plan: { days },
+  };
+}
+
+async function saveTripToDb(trip, userId) {
+  // Upsert the trip row
+  const { data: tripRow, error: tripErr } = await supabase
+    .from("trips")
+    .upsert({
+      id: trip.id?.startsWith("t") ? undefined : trip.id, // new trips have temp "t..." ids
+      user_id: userId,
+      destination: trip.destination,
+      start_date: trip.startDate || null,
+      end_date: trip.endDate || null,
+      completed: trip.completed || false,
+      notes: trip.notes || null,
+      cover_photo: trip.coverPhoto || null,
+    }, { onConflict: "id" })
+    .select()
+    .single();
+  if (tripErr) return null;
+
+  const tripId = tripRow.id;
+
+  // Replace days + places (delete then re-insert for simplicity)
+  if (trip.plan?.days?.length) {
+    await supabase.from("trip_days").delete().eq("trip_id", tripId);
+    for (let i = 0; i < trip.plan.days.length; i++) {
+      const d = trip.plan.days[i];
+      const { data: dayRow } = await supabase.from("trip_days").insert({
+        trip_id: tripId, day_number: i + 1, name: d.name || null, city: d.city || null, notes: d.notes || null,
+      }).select().single();
+      if (dayRow && (d.entries || d.items)?.length) {
+        const places = (d.entries || d.items).map((e, j) => ({
+          day_id: dayRow.id, entry_id: e.entry_id || null,
+          name: e.name, type: e.type || null, city: e.city || null, state: e.state || null,
+          verdict: e.verdict || null, cuisine: e.cuisine || null,
+          distance_from_prev: e.distanceFromPrev || null, travel_time_from_prev: e.travelTimeFromPrev || null,
+          visited: e.visited || false, order_idx: j,
+        }));
+        await supabase.from("trip_places").insert(places);
+      }
+    }
+  }
+
+  // Pack list
+  await supabase.from("pack_list_items").delete().eq("trip_id", tripId);
+  if (trip.packList?.length) {
+    await supabase.from("pack_list_items").insert(
+      trip.packList.map((item, i) => ({ trip_id: tripId, text: item.text, packed: item.packed || false, order_idx: i }))
+    );
+  }
+
+  // Book & reserve
+  await supabase.from("book_remind_items").delete().eq("trip_id", tripId);
+  if (trip.bookRemind?.length) {
+    await supabase.from("book_remind_items").insert(
+      trip.bookRemind.map((item, i) => ({ trip_id: tripId, text: item.text, order_idx: i }))
+    );
+  }
+
+  return tripId;
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function MainApp({ user, onLogout }) {
   const [tab, setTab] = useState("home");
   const [showNetwork, setShowNetwork] = useState(false);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
-  const [entries, setEntries] = useState(() => {
-    try {
-      const saved = localStorage.getItem("travelslate_entries");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      ...MOCK_ENTRIES,
-      ...MOCK_ACTIVITIES.map(a => ({
-        ...a,
-        type: a.category,
-        verdict: "must_go",
-        cuisine: null,
-        dish: null,
-        rating: null,
-        isActivity: true
-      }))
-    ];
-  });
+  const [entries, setEntries] = useState([]);
+  const [entriesLoaded, setEntriesLoaded] = useState(false);
+
+  // Load entries from Supabase on mount
   useEffect(() => {
-    try { localStorage.setItem("travelslate_entries", JSON.stringify(entries)); } catch {}
-  }, [entries]);
+    if (!user) return;
+    supabase
+      .from("entries")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) setEntries(data.map(dbEntryToLocal));
+        setEntriesLoaded(true);
+      });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showAddModal, setShowAddModal] = useState(false);
   const [prefillEntry, setPrefillEntry] = useState(null);
   const [showTripModal, setShowTripModal] = useState(false);
@@ -6731,72 +6871,49 @@ function MainApp({ user, onLogout }) {
       ]}
     }
   ]); // trips shared by friends
-  const [savedTrips, setSavedTrips] = useState([
-    {
-      id: "demo_past_1", destination: "Amsterdam, Netherlands", days: 7, kids: false,
-      startDate: "2023-05-15", endDate: "2023-05-22",
-      createdAt: "5/15/2023", completed: true,
-      invitedFriends: [], sharedWith: [], notes: "Canals, museums, and incredible food.",
-      packList: [], bookRemind: [], collaboratorSuggestions: [], ideasNotes: [],
-      plan: { days: [
-        { day: 1, city: "Amsterdam", entries: [
-          { id: "ap1e1", name: "Rijksmuseum", type: "scenic", city: "Amsterdam", verdict: "must_go", visited: true },
-          { id: "ap1e2", name: "De Kas Restaurant", type: "restaurant", city: "Amsterdam", verdict: "must_go", cuisine: "Dutch", visited: true },
-        ]},
-      ]}
-    },
-    {
-      id: "demo_past_2", destination: "Paris, France", days: 7, kids: false,
-      startDate: "2022-06-10", endDate: "2022-06-17",
-      createdAt: "6/10/2022", completed: true,
-      invitedFriends: [], sharedWith: [], notes: "City of light. Croissants every morning.",
-      packList: [], bookRemind: [], collaboratorSuggestions: [], ideasNotes: [],
-      plan: { days: [
-        { day: 1, city: "Paris", entries: [
-          { id: "pp1e1", name: "Eiffel Tower", type: "scenic", city: "Paris", verdict: "must_go", visited: true },
-          { id: "pp1e2", name: "Café de Flore", type: "cafe", city: "Paris", verdict: "must_go", cuisine: "French", visited: true },
-        ]},
-      ]}
-    },
-    {
-      id: "demo_collab_1", destination: "Boulder, CO", days: 2, kids: false,
-      startDate: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-      endDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      createdAt: new Date().toLocaleDateString(), completed: false,
-      invitedFriends: ["u2", "u3"], sharedWith: [],
-      notes: "Weekend trip to Boulder — Pearl St + hiking",
-      packList: [
-        { id: "pp1", text: "Hiking boots", packed: true },
-        { id: "pp2", text: "Sunscreen", packed: false },
-        { id: "pp3", text: "Water bottle", packed: false },
-      ],
-      bookRemind: [
-        { id: "br1", text: "Book Airbnb near Pearl St", done: false },
-        { id: "br2", text: "Reserve Frasca Food & Wine", done: false },
-      ],
-      collaboratorSuggestions: [
-        { id: "cs1", userId: "u2", name: "Hop Alley", type: "restaurant", city: "Denver", state: "CO", dayIdx: 0 },
-        { id: "cs2", userId: "u3", name: "Chautauqua Park Trailhead", type: "hiking", city: "Boulder", state: "CO", dayIdx: 1 },
-      ],
-      plan: { days: [
-        { day: 1, city: "Boulder", name: "Day 1 — Pearl Street", activity: "Pearl Street Mall + lunch", notes: "Start with coffee at Boxcar, then wander Pearl St.", entries: [
-          { id: "dc1e1", name: "Boxcar Coffee Roasters", type: "cafe", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Coffee", distanceFromPrev: null, travelTimeFromPrev: null },
-          { id: "dc1e2", name: "The Kitchen", type: "restaurant", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "American", distanceFromPrev: "0.3 mi", travelTimeFromPrev: "5 min walk" },
-        ]},
-        { day: 2, city: "Boulder", name: "Day 2 — Outdoors", activity: "Hiking + brewery", notes: "Chautauqua in the morning, Avery after.", entries: [
-          { id: "dc2e1", name: "Avery Brewing", type: "brewery", city: "Boulder", state: "CO", verdict: "must_go", cuisine: "Craft Beer", distanceFromPrev: null, travelTimeFromPrev: null },
-        ]},
-      ]}
+  const [savedTrips, setSavedTrips] = useState([]);
+  const [tripsLoaded, setTripsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("trips")
+      .select(`*, trip_days(*, trip_places(*)), pack_list_items(*), book_remind_items(*), trip_members(user_id, role)`)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) setSavedTrips(data.map(dbTripToLocal));
+        setTripsLoaded(true);
+      });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [currentUser, setCurrentUser] = useState(() => {
+    // Use the real auth user if available, fall back to mock for dev without credentials
+    if (user) {
+      return {
+        id: user.id,
+        username: user.user_metadata?.username || user.email?.split("@")[0] || "me",
+        name: user.user_metadata?.name || user.email?.split("@")[0] || "You",
+        avatar: user.user_metadata?.avatar || "✈️",
+        avatarImg: user.user_metadata?.avatar_url || null,
+        bio: user.user_metadata?.bio || "",
+        tags: [],
+      };
     }
-  ]);
-  const [currentUser, setCurrentUser] = useState(MOCK_USERS[0]);
+    return MOCK_USERS[0];
+  });
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [focusTripSection, setFocusTripSection] = useState(null); // { tripId, section }
   const tripsPlanningRef = useRef(null);
   const tripsPastRef = useRef(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [readNotifIds, setReadNotifIds] = useState(new Set());
-  const [savedBookmarks, setSavedBookmarks] = useState(new Set()); // entry ids bookmarked in Explore
+  const [savedBookmarks, setSavedBookmarks] = useState(new Set());
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("bookmarks").select("entry_id").eq("user_id", user.id)
+      .then(({ data }) => { if (data) setSavedBookmarks(new Set(data.map(b => b.entry_id))); });
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-move trips to past when their end date has passed
   useEffect(() => {
@@ -6969,7 +7086,12 @@ function MainApp({ user, onLogout }) {
             entries={entries}
             savedTrips={savedTrips}
             savedBookmarks={savedBookmarks}
-            onToggleBookmark={id => setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
+            onToggleBookmark={async id => {
+              setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+              const isNowBookmarked = !savedBookmarks.has(id);
+              if (isNowBookmarked) await supabase.from("bookmarks").insert({ user_id: user?.id, entry_id: id });
+              else await supabase.from("bookmarks").delete().eq("user_id", user?.id).eq("entry_id", id);
+            }}
             onAddToTrip={(tripId, entry) => setSavedTrips(prev => prev.map(t => {
               if (t.id !== tripId) return t;
               const updatedDays = t.plan?.days ? [...t.plan.days] : [];
@@ -6978,6 +7100,7 @@ function MainApp({ user, onLogout }) {
               return { ...t, plan: { ...t.plan, days: updatedDays } };
             }))}
             onViewProfile={setViewProfile}
+            currentUserId={currentUser.id}
           />
         )}
 
@@ -6994,7 +7117,12 @@ function MainApp({ user, onLogout }) {
             onEditProfile={() => setShowEditProfile(true)}
             onGoToTrips={() => setTab("trips")}
             savedBookmarks={savedBookmarks}
-            onToggleBookmark={id => setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; })}
+            onToggleBookmark={async id => {
+              setSavedBookmarks(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+              const isNowBookmarked = !savedBookmarks.has(id);
+              if (isNowBookmarked) await supabase.from("bookmarks").insert({ user_id: user?.id, entry_id: id });
+              else await supabase.from("bookmarks").delete().eq("user_id", user?.id).eq("entry_id", id);
+            }}
           />
         )}
 
@@ -7055,11 +7183,11 @@ function MainApp({ user, onLogout }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {savedTrips.filter(t => !t.completed).map(trip => (
                     <TripCard key={trip.id} trip={trip} entries={entries}
-                      onDelete={() => setSavedTrips(prev => prev.filter(t => t.id !== trip.id))}
-                      onComplete={coverPhoto => setSavedTrips(prev => prev.map(t => t.id === trip.id ? { ...t, completed: true, ...(coverPhoto ? { coverPhoto } : {}) } : t))}
+                      onDelete={async () => { await supabase.from("trips").delete().eq("id", trip.id); setSavedTrips(prev => prev.filter(t => t.id !== trip.id)); }}
+                      onComplete={async coverPhoto => { await supabase.from("trips").update({ completed: true, cover_photo: coverPhoto || null }).eq("id", trip.id); setSavedTrips(prev => prev.map(t => t.id === trip.id ? { ...t, completed: true, ...(coverPhoto ? { coverPhoto } : {}) } : t)); }}
                       onInviteFriend={uid => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, invitedFriends: (t.invitedFriends||[]).includes(uid) ? (t.invitedFriends||[]).filter(x=>x!==uid) : [...(t.invitedFriends||[]), uid]} : t))}
                       onAddPlaces={() => setShowTripModal(true)}
-                      onUpdate={updated => setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t))}
+                      onUpdate={async updated => { await saveTripToDb(updated, user?.id); setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t)); }}
                       onEdit={() => setEditingTrip(trip)}
                       focusSection={focusTripSection?.tripId === trip.id ? focusTripSection.section : null}
                       onFocusHandled={() => setFocusTripSection(null)}
@@ -7129,9 +7257,9 @@ function MainApp({ user, onLogout }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {savedTrips.filter(t => t.completed).map(trip => (
                     <TripCard key={trip.id} trip={trip} entries={entries}
-                      onDelete={() => setSavedTrips(prev => prev.filter(t => t.id !== trip.id))}
+                      onDelete={async () => { await supabase.from("trips").delete().eq("id", trip.id); setSavedTrips(prev => prev.filter(t => t.id !== trip.id)); }}
                       past
-                      onReactivate={() => setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: false} : t))}
+                      onReactivate={async () => { await supabase.from("trips").update({ completed: false }).eq("id", trip.id); setSavedTrips(prev => prev.map(t => t.id === trip.id ? {...t, completed: false} : t)); }}
                       onImportToLogs={() => importTripToLogs(trip, setEntries, setImportToLogsMsg)}
                       onImportSingle={entry => setPrefillEntry(entry)}
                       onShare={userId => {
@@ -7165,10 +7293,22 @@ function MainApp({ user, onLogout }) {
       </div>
 
       {showEditProfile && <EditProfileModal user={currentUser} onClose={() => setShowEditProfile(false)} onSave={updated => { setCurrentUser(updated); setShowEditProfile(false); }} />}
-      {showAddModal && <AddEntryModal key="add-entry-modal" onClose={() => setShowAddModal(false)} onSave={e => setEntries(prev => [e, ...prev])} entries={entries} />}
-      {prefillEntry && <AddEntryModal key={prefillEntry.id || "prefill"} prefill={prefillEntry} onClose={() => setPrefillEntry(null)} onSave={e => { setEntries(prev => [e, ...prev]); setPrefillEntry(null); }} entries={entries} />}
-      {editingEntry && <EditEntryModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updated => {
-        setEntries(prev => prev.map(e => e.id === updated.id ? updated : e));
+      {showAddModal && <AddEntryModal key="add-entry-modal" onClose={() => setShowAddModal(false)} onSave={async e => {
+        const { data, error } = await supabase.from("entries").insert(localEntryToDb(e, user?.id)).select().single();
+        if (!error && data) setEntries(prev => [dbEntryToLocal(data), ...prev]);
+        else setEntries(prev => [e, ...prev]); // fallback: show locally even if DB write fails
+        setShowAddModal(false);
+      }} entries={entries} />}
+      {prefillEntry && <AddEntryModal key={prefillEntry.id || "prefill"} prefill={prefillEntry} onClose={() => setPrefillEntry(null)} onSave={async e => {
+        const { data, error } = await supabase.from("entries").insert(localEntryToDb(e, user?.id)).select().single();
+        if (!error && data) setEntries(prev => [dbEntryToLocal(data), ...prev]);
+        else setEntries(prev => [e, ...prev]);
+        setPrefillEntry(null);
+      }} entries={entries} />}
+      {editingEntry && <EditEntryModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={async updated => {
+        const { data, error } = await supabase.from("entries").update(localEntryToDb(updated, user?.id)).eq("id", updated.id).select().single();
+        if (!error && data) setEntries(prev => prev.map(e => e.id === updated.id ? dbEntryToLocal(data) : e));
+        else setEntries(prev => prev.map(e => e.id === updated.id ? updated : e));
         setEditingEntry(null);
       }} />}
       {showNetwork && (
@@ -7196,8 +7336,15 @@ function MainApp({ user, onLogout }) {
         onClose={() => { setShowTripModal(false); setEditingTrip(null); }}
         savedTrips={savedTrips}
         editTrip={editingTrip || null}
-        onSaveTrip={trip => setSavedTrips(prev => [trip, ...prev])}
-        onUpdateTrip={updated => { setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t)); setEditingTrip(null); }} />}
+        onSaveTrip={async trip => {
+          const dbId = await saveTripToDb(trip, user?.id);
+          setSavedTrips(prev => [dbId ? { ...trip, id: dbId } : trip, ...prev]);
+        }}
+        onUpdateTrip={async updated => {
+          await saveTripToDb(updated, user?.id);
+          setSavedTrips(prev => prev.map(t => t.id === updated.id ? updated : t));
+          setEditingTrip(null);
+        }} />}
 
       {/* Floating Log button — mobile only */}
       <button className="ts-fab" onClick={() => setShowAddModal(true)}>
@@ -7293,20 +7440,34 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError("");
     if (mode === "signup") {
       if (!form.email || !form.password || !form.name) { setError("Please fill in all fields."); return; }
       if (form.password.length < 6) { setError("Password must be at least 6 characters."); return; }
-
     } else {
       if (!form.email || !form.password) { setError("Please enter your email and password."); return; }
     }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onAuth({ id: "u1", email: form.email, name: form.name || "Sandy S.", username: form.email.split("@")[0] });
-    }, 1200);
+    if (mode === "signup") {
+      const username = form.email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "_");
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: { data: { name: form.name.trim(), username } }
+      });
+      if (error) { setError(error.message); setLoading(false); return; }
+      if (data.session) {
+        onAuth(data.session.user);
+      } else {
+        setError("Check your email to confirm your account, then sign in.");
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password });
+      if (error) { setError(error.message); setLoading(false); return; }
+      onAuth(data.session.user);
+    }
+    setLoading(false);
   };
 
   const inp = (field, label, placeholder, type = "text") => (
@@ -7360,7 +7521,7 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
         </div>
 
         {/* Google Sign-in */}
-        <button onClick={() => { setLoading(true); setTimeout(() => { setLoading(false); onAuth({ id: "u1", email: "sandy@gmail.com", name: "Sandy S.", username: "sandy_explores" }); }, 1000); }}
+        <button onClick={async () => { setLoading(true); const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } }); if (error) { setError(error.message); setLoading(false); } }}
           style={{ width: "100%", background: "#fff", border: "1px solid #dbdbdb", borderRadius: 10, padding: "11px 16px",
             color: "#000", fontSize: 14, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20,
@@ -7410,10 +7571,35 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
 // ─── ROOT APP (AUTH GATE) ───────────────────────────────────────────────────
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
-  const [screen, setScreen] = useState("landing"); // landing | auth-signup | auth-login | app
+  const [screen, setScreen] = useState("landing");
+  const [sessionLoading, setSessionLoading] = useState(true);
+
+  useEffect(() => {
+    // Restore existing session on page load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) { setAuthUser(session.user); setScreen("app"); }
+      setSessionLoading(false);
+    });
+    // Listen for login/logout events (e.g. OAuth redirect)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) { setAuthUser(session.user); setScreen("app"); }
+      else { setAuthUser(null); setScreen("landing"); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAuthUser(null);
+    setScreen("landing");
+  };
+
+  if (sessionLoading) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#fafafa", fontSize: 28 }}>✈️</div>;
+  }
 
   if (authUser && screen === "app") {
-    return <MainApp user={authUser} onLogout={() => { setAuthUser(null); setScreen("landing"); }} />;
+    return <MainApp user={authUser} onLogout={handleLogout} />;
   }
 
   if (screen === "auth-signup" || screen === "auth-login") {
