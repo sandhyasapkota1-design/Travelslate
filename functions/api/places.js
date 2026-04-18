@@ -4,8 +4,8 @@ export async function onRequestGet(context) {
   const q = searchParams.get("q");
   const destination = searchParams.get("destination");
 
-  if (!q || !destination) {
-    return Response.json({ error: "Missing q or destination" }, { status: 400 });
+  if (!q) {
+    return Response.json({ error: "Missing q" }, { status: 400 });
   }
 
   const key = env.GOOGLE_PLACES_KEY;
@@ -14,7 +14,8 @@ export async function onRequestGet(context) {
   }
 
   try {
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q + " " + destination)}&key=${key}`;
+    const searchQuery = destination ? `${q} ${destination}` : q;
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${key}`;
     const response = await fetch(url);
     const data = await response.json();
     return new Response(JSON.stringify(data), {

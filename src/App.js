@@ -1963,50 +1963,63 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                 placeholder="🔍 Search friends' logs or any place..."
                 style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
                   padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-              {(manualSearchResults.length > 0 || googlePlacesResults.length > 0 || googlePlacesLoading) && (
-                <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
+              {googlePlacesLoading && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "#888", padding: "8px 0" }}>Searching places…</div>
+              )}
+              {(manualSearchResults.length > 0 || googlePlacesResults.length > 0) && (
+                <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 10, marginTop: 6, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+                  {/* Google Places results — shown first */}
+                  {googlePlacesResults.map(e => {
+                    const typeIcon = { restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔", hiking:"🥾" }[e.type] || "📍";
+                    return (
+                      <div key={e.id} style={{ padding: "12px 14px", borderBottom: "1px solid #f5f5f5" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>{typeIcon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "#000", marginBottom: 2 }}>{e.name}</div>
+                            <div style={{ fontSize: 12, color: "#888" }}>
+                              {e.city}{e.city && e.type ? " · " : ""}{e.type}
+                              {e.rating ? <span style={{ marginLeft: 6, color: "#f59e0b", fontWeight: 600 }}>★ {e.rating}</span> : null}
+                            </div>
+                            {e.notes && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.notes}</div>}
+                          </div>
+                          <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
+                            style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                            defaultValue="">
+                            <option value="" disabled>+ Add</option>
+                            {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
                   {/* Network results */}
                   {manualSearchResults.length > 0 && (
                     <>
-                      <div style={{ padding: "6px 12px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em" }}>From your network</div>
-                      {manualSearchResults.map(e => (
-                        <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
-                          <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
-                            <div style={{ fontSize: 12, color: "#888" }}>{e.city}</div>
+                      <div style={{ padding: "6px 14px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", borderTop: googlePlacesResults.length > 0 ? "1px solid #f0f0f0" : "none" }}>From your network</div>
+                      {manualSearchResults.map(e => {
+                        const typeIcon = { restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔", hiking:"🥾" }[e.type] || "📍";
+                        return (
+                          <div key={e.id} style={{ padding: "12px 14px", borderBottom: "1px solid #f5f5f5" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                              <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>{typeIcon}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#000", marginBottom: 2 }}>{e.name}</div>
+                                <div style={{ fontSize: 12, color: "#888" }}>
+                                  {e.city}{e.city && (e.cuisine || e.type) ? " · " : ""}{e.cuisine || e.type}
+                                  {e.rating ? <span style={{ marginLeft: 6, color: "#f59e0b", fontWeight: 600 }}>★ {e.rating}</span> : null}
+                                </div>
+                              </div>
+                              <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
+                                style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer", flexShrink: 0 }}
+                                defaultValue="">
+                                <option value="" disabled>+ Add</option>
+                                {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              </select>
+                            </div>
                           </div>
-                          <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
-                            style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer" }}
-                            defaultValue="">
-                            <option value="" disabled>+ Add</option>
-                            {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {/* Google Places results */}
-                  {(googlePlacesLoading || googlePlacesResults.length > 0) && (
-                    <>
-                      <div style={{ padding: "6px 12px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", borderTop: manualSearchResults.length > 0 ? "1px solid #f0f0f0" : "none" }}>
-                        {googlePlacesLoading ? "Searching Google Places…" : "Google Places"}
-                      </div>
-                      {googlePlacesResults.map(e => (
-                        <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
-                          <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
-                            <div style={{ fontSize: 12, color: "#888" }}>{e.notes || e.city}</div>
-                          </div>
-                          <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
-                            style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer" }}
-                            defaultValue="">
-                            <option value="" disabled>+ Add</option>
-                            {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                 </div>
@@ -2014,7 +2027,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
               {manualSearch.trim().length >= 2 && !googlePlacesLoading && manualSearchResults.length === 0 && googlePlacesResults.length === 0 && (
                 <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
                   No matches found.{" "}
-                  <a href={`https://www.google.com/maps/search/${encodeURIComponent(manualSearch)}`}
+                  <a href={`https://www.google.com/maps/search/${encodeURIComponent(manualSearch + (manualDestination ? " " + manualDestination : ""))}`}
                     target="_blank" rel="noopener noreferrer"
                     style={{ color: "#000", fontWeight: 600, textDecoration: "underline" }}>
                     Search on Google Maps ↗
@@ -6668,6 +6681,7 @@ function buildNotifications(savedTrips, sharedTrips) {
 function MainApp({ user, onLogout }) {
   const [tab, setTab] = useState("home");
   const [showNetwork, setShowNetwork] = useState(false);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const [entries, setEntries] = useState(() => {
     try {
       const saved = localStorage.getItem("travelslate_entries");
@@ -6851,30 +6865,55 @@ function MainApp({ user, onLogout }) {
                 fontSize: 13, cursor: "pointer", fontWeight: 600, letterSpacing: "0.01em" }}>
               + Log
             </button>
-            {/* Notification bell */}
-            <button className="ts-header-btn" onClick={() => setShowNotifications(v => !v)}
-              style={{ position: "relative", background: showNotifications ? "#7B2D42" : "none",
-                border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 10px",
-                color: showNotifications ? "#fff" : "#7a6055", fontSize: 14, cursor: "pointer" }}
-              title="Notifications">
-              🔔
-              {unreadNotifCount > 0 && (
-                <span style={{ position: "absolute", top: 4, right: 4, width: 7, height: 7,
-                  background: "#e53935", borderRadius: "50%", border: "1.5px solid #fff" }} />
+            {/* Avatar menu */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowAvatarMenu(v => !v)}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center" }}
+                title={currentUser.name}
+              >
+                <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", background: "#ede8e2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "2px solid #d8cfc7", position: "relative" }}>
+                  {currentUser.avatarImg
+                    ? <img src={currentUser.avatarImg} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : currentUser.avatar}
+                  {unreadNotifCount > 0 && (
+                    <span style={{ position: "absolute", top: 1, right: 1, width: 8, height: 8, background: "#e53935", borderRadius: "50%", border: "1.5px solid #fff" }} />
+                  )}
+                </div>
+              </button>
+              {showAvatarMenu && (
+                <>
+                  <div onClick={() => setShowAvatarMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 99 }} />
+                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: "#fff", border: "1px solid #ede8e2", borderRadius: 12, boxShadow: "0 4px 20px rgba(61,31,20,0.12)", minWidth: 180, zIndex: 100, overflow: "hidden" }}>
+                    <div style={{ padding: "10px 14px", borderBottom: "1px solid #f5f0eb" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#1a0a00" }}>{currentUser.name}</div>
+                      <div style={{ fontSize: 11, color: "#b09e94" }}>@{currentUser.username}</div>
+                    </div>
+                    <button onClick={() => { setShowAvatarMenu(false); setShowNotifications(v => !v); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: "11px 14px", cursor: "pointer", fontSize: 13, color: "#3d1f14", fontFamily: "inherit", textAlign: "left" }}>
+                      <span style={{ position: "relative", fontSize: 16 }}>
+                        🔔
+                        {unreadNotifCount > 0 && <span style={{ position: "absolute", top: -2, right: -3, width: 7, height: 7, background: "#e53935", borderRadius: "50%", border: "1px solid #fff" }} />}
+                      </span>
+                      Notifications
+                      {unreadNotifCount > 0 && <span style={{ marginLeft: "auto", fontSize: 11, background: "#e53935", color: "#fff", borderRadius: 10, padding: "1px 6px" }}>{unreadNotifCount}</span>}
+                    </button>
+                    <button onClick={() => { setShowAvatarMenu(false); setShowNetwork(true); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: "11px 14px", cursor: "pointer", fontSize: 13, color: "#3d1f14", fontFamily: "inherit", textAlign: "left" }}>
+                      <span style={{ fontSize: 16 }}>👥</span>
+                      Friends & Network
+                    </button>
+                    <div style={{ borderTop: "1px solid #f5f0eb" }}>
+                      <button onClick={onLogout}
+                        style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: "11px 14px", cursor: "pointer", fontSize: 13, color: "#9e3030", fontFamily: "inherit", textAlign: "left" }}>
+                        <span style={{ fontSize: 16 }}>🚪</span>
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
-            </button>
-            <button className="ts-header-btn" onClick={() => setShowNetwork(true)}
-              style={{ background: "none", border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 11px",
-                color: "#7a6055", fontSize: 14, cursor: "pointer" }}
-              title="Network">
-              👥
-            </button>
-            <button className="ts-header-btn" onClick={onLogout}
-              style={{ background: "none", border: "1px solid #d8cfc7", borderRadius: 10, padding: "8px 14px",
-                color: "#9e8878", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                fontSize: 12, cursor: "pointer" }}>
-              Logout
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -6890,14 +6929,14 @@ function MainApp({ user, onLogout }) {
       )}
 
       {/* Nav */}
-      <div style={{ borderBottom: "1px solid #ede8e2", background: "#fff", position: "sticky", top: 57, zIndex: 40, padding: "0 16px" }}>
-        <div className="ts-inner" style={{ display: "flex" }}>
-          {[["home","🏠 Home"],["explore","🔍 Explore"],["trips","✈️ Trips"],["mine","📍 My Logs"]].map(([id, label]) => (
+      <div style={{ borderBottom: "1px solid #ede8e2", background: "#fff", position: "sticky", top: 57, zIndex: 40 }}>
+        <div style={{ display: "flex", width: "100%" }}>
+          {[["home","Home"],["explore","Explore"],["trips","Trips"],["mine","My Logs"]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className="ts-tab"
               style={{ border: "none", borderBottom: tab === id ? "2.5px solid #3d1f14" : "2.5px solid transparent",
                 background: "transparent",
-                color: tab === id ? "#3d1f14" : "#9e8878", cursor: "pointer",
+                color: "#1a0a00", cursor: "pointer",
                 fontWeight: tab === id ? 700 : 400,
                 fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                 transition: "all 0.18s", letterSpacing: "0.02em" }}>

@@ -57,8 +57,8 @@
   }
   .ts-tab {
     font-size: 16px;
-    padding: 16px 36px;
-    flex: none;
+    padding: 16px 0;
+    flex: 1;
   }
   .ts-brand-name {
     font-size: 26px !important;
