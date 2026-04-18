@@ -1596,6 +1596,9 @@ function TripPlannerModal({ entries, onClose, onSaveTrip, savedTrips, onUpdateTr
   const [manualLoading, setManualLoading] = useState(false);
   const [manualError, setManualError] = useState("");
   const [manualGenerated, setManualGenerated] = useState(false);
+  const [googlePlacesResults, setGooglePlacesResults] = useState([]);
+  const [googlePlacesLoading, setGooglePlacesLoading] = useState(false);
+  const searchDebounceRef = useRef(null);
 
   const CITIES = [...new Set(entries.map(e => e.city))];
 
@@ -1717,6 +1720,18 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
       ).slice(0, 8)
     : [];
 
+  useEffect(() => {
+    if (manualSearch.trim().length < 2) { setGooglePlacesResults([]); return; }
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(async () => {
+      setGooglePlacesLoading(true);
+      const results = await searchGooglePlaces(manualSearch, manualDestination);
+      setGooglePlacesResults(results);
+      setGooglePlacesLoading(false);
+    }, 400);
+    return () => clearTimeout(searchDebounceRef.current);
+  }, [manualSearch, manualDestination]);
+
   const cityKey = Object.keys(POPULAR_PLACES).find(k =>
     manualDestination.toLowerCase().includes(k.toLowerCase()) ||
     k.toLowerCase().includes(manualDestination.toLowerCase())
@@ -1776,7 +1791,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
         {mode === "manual" && (
           <div>
             <button onClick={() => { setMode(null); setManualGenerated(false); setManualNotes(""); setManualError(""); }}
-              style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, padding: 0, marginBottom: 16 }}>← Back</button>
+              style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, fontWeight: 500, padding: "4px 0", marginBottom: 16 }}>← Back</button>
 
             {/* Destination + Days */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginBottom: 14 }}>
@@ -1948,33 +1963,62 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
                 placeholder="🔍 Search friends' logs or any place..."
                 style={{ width: "100%", background: "#f8f8f8", border: "1px solid #efefef", borderRadius: 8,
                   padding: "11px 12px", color: "#000", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
-              {manualSearch.trim().length >= 2 && manualSearchResults.length === 0 && (
+              {(manualSearchResults.length > 0 || googlePlacesResults.length > 0 || googlePlacesLoading) && (
+                <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
+                  {/* Network results */}
+                  {manualSearchResults.length > 0 && (
+                    <>
+                      <div style={{ padding: "6px 12px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em" }}>From your network</div>
+                      {manualSearchResults.map(e => (
+                        <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
+                          <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
+                            <div style={{ fontSize: 12, color: "#888" }}>{e.city}</div>
+                          </div>
+                          <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
+                            style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer" }}
+                            defaultValue="">
+                            <option value="" disabled>+ Add</option>
+                            {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {/* Google Places results */}
+                  {(googlePlacesLoading || googlePlacesResults.length > 0) && (
+                    <>
+                      <div style={{ padding: "6px 12px 4px", fontSize: 10, fontWeight: 700, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", borderTop: manualSearchResults.length > 0 ? "1px solid #f0f0f0" : "none" }}>
+                        {googlePlacesLoading ? "Searching Google Places…" : "Google Places"}
+                      </div>
+                      {googlePlacesResults.map(e => (
+                        <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
+                          <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
+                            <div style={{ fontSize: 12, color: "#888" }}>{e.notes || e.city}</div>
+                          </div>
+                          <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
+                            style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer" }}
+                            defaultValue="">
+                            <option value="" disabled>+ Add</option>
+                            {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+              {manualSearch.trim().length >= 2 && !googlePlacesLoading && manualSearchResults.length === 0 && googlePlacesResults.length === 0 && (
                 <div style={{ marginTop: 6, fontSize: 12, color: "#888" }}>
-                  No matches in your network.{" "}
+                  No matches found.{" "}
                   <a href={`https://www.google.com/maps/search/${encodeURIComponent(manualSearch)}`}
                     target="_blank" rel="noopener noreferrer"
                     style={{ color: "#000", fontWeight: 600, textDecoration: "underline" }}>
                     Search on Google Maps ↗
                   </a>
-                </div>
-              )}
-              {manualSearchResults.length > 0 && (
-                <div style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
-                  {manualSearchResults.map(e => (
-                    <div key={e.id} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f5f5f5" }}>
-                      <span>{{ restaurant:"🍽", brewery:"🍺", cafe:"☕", activity:"🏔" }[e.type] || "📍"}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
-                        <div style={{ fontSize: 12, color: "#888" }}>{e.city}</div>
-                      </div>
-                      <select onChange={ev => ev.target.value && addToSection(ev.target.value, e)}
-                        style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "5px 8px", fontSize: 12, cursor: "pointer" }}
-                        defaultValue="">
-                        <option value="" disabled>+ Add</option>
-                        {manualSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
@@ -2100,7 +2144,7 @@ Return ONLY valid JSON — no explanation, no markdown fences, no backticks. Sch
 
         {mode === "quick" && step === 0 && (
           <div>
-            <button onClick={() => setMode(null)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, padding: 0, marginBottom: 16 }}>← Back</button>
+            <button onClick={() => setMode(null)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, fontWeight: 500, padding: "4px 0", marginBottom: 16 }}>← Back</button>
             <p style={{ color: "#888", fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
               Auto-generate an itinerary using Must Go picks from your network.
             </p>
@@ -2330,7 +2374,7 @@ function ProfileView({ user, entries, onBack, savedTrips, onAddToTrip }) {
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "#555", cursor: "pointer",
-        fontSize: 13, marginBottom: 20, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+        fontSize: 16, fontWeight: 500, marginBottom: 20, padding: "4px 0", display: "flex", alignItems: "center", gap: 4 }}>
         ← Back
       </button>
 
@@ -4132,9 +4176,9 @@ function MoveDaySelect({ days, currentDayIdx, onMove }) {
       value={val}
       title="Move to day"
       onChange={ev => { setVal(""); onMove(Number(ev.target.value)); }}
-      style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+      style={{ width: 32, height: 32, borderRadius: 8, cursor: "pointer",
         border: "1.5px solid #e0e0e0", background: "transparent",
-        fontSize: 10, color: "#888", padding: 0, appearance: "none",
+        fontSize: 13, color: "#888", padding: 0, appearance: "none",
         WebkitAppearance: "none", textAlign: "center", outline: "none" }}>
       <option value="" disabled>⇄</option>
       {days.map((d, i) => i !== currentDayIdx && (
@@ -5058,7 +5102,16 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: "#111",
                             textDecoration: e.visited ? "line-through" : "none", lineHeight: 1.3 }}>
-                            {e.name}
+                            <a
+                              href={e.lat && e.lon
+                                ? `https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lon}`
+                                : `https://www.google.com/maps/search/${encodeURIComponent([e.name, e.city, e.state].filter(Boolean).join(" "))}`}
+                              target="_blank" rel="noopener noreferrer"
+                              onClick={ev => ev.stopPropagation()}
+                              style={{ color: "inherit", textDecoration: "none" }}
+                            >
+                              {e.name} <span style={{ color: "#4285f4", fontSize: 11 }}>↗</span>
+                            </a>
                           </div>
                           <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>
                             {[e.cuisine || e.type, e.city].filter(Boolean).join(" · ")}
@@ -5079,21 +5132,21 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                           {onUpdate && (
                             <button onClick={() => toggleVisited(dayIdx, e.id)}
                               title={e.visited ? "Mark unvisited" : "Mark visited"}
-                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                              style={{ width: 32, height: 32, borderRadius: 8, cursor: "pointer",
                                 border: `1.5px solid ${e.visited ? "#22c55e" : "#e0e0e0"}`,
                                 background: e.visited ? "#f0fdf4" : "transparent",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 13, color: e.visited ? "#22c55e" : "#d0d0d0", transition: "all 0.15s" }}>
+                                fontSize: 16, color: e.visited ? "#22c55e" : "#d0d0d0", transition: "all 0.15s" }}>
                               ✓
                             </button>
                           )}
                           {/* Log to diary */}
                           {onImportSingle && (
                             <button onClick={() => onImportSingle(e)} title="Log to diary"
-                              style={{ height: 28, borderRadius: 8, cursor: "pointer",
+                              style={{ height: 32, borderRadius: 8, cursor: "pointer",
                                 border: "1.5px solid #c8a882", background: "#fdf6f0",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 11, fontWeight: 700, color: "#b07040", padding: "0 10px",
+                                fontSize: 13, fontWeight: 700, color: "#b07040", padding: "0 10px",
                                 letterSpacing: "0.03em" }}>
                               Log
                             </button>
@@ -5109,10 +5162,10 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                           {/* Remove */}
                           {onUpdate && (
                             <button onClick={() => removePlace(dayIdx, e.id)} title="Remove place"
-                              style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                              style={{ width: 32, height: 32, borderRadius: 8, cursor: "pointer",
                                 border: "1.5px solid #e0e0e0", background: "transparent",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 16, color: "#d0d0d0", lineHeight: 1 }}>
+                                fontSize: 18, color: "#d0d0d0", lineHeight: 1 }}>
                               ×
                             </button>
                           )}
@@ -7242,7 +7295,7 @@ function AuthScreen({ mode: initialMode, onAuth, onBack }) {
 
       <div style={{ width: "100%", maxWidth: 420, animation: "fadeUp 0.5s ease-out" }}>
         <button onClick={onBack}
-          style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 13, padding: 0, marginBottom: 24 }}>
+          style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, fontWeight: 500, padding: "4px 0", marginBottom: 24 }}>
           ← Back
         </button>
 
