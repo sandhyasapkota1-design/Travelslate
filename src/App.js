@@ -4125,6 +4125,25 @@ function AddPlaceInput({ entries, trip, onAdd }) {
   );
 }
 
+function MoveDaySelect({ days, currentDayIdx, onMove }) {
+  const [val, setVal] = useState("");
+  return (
+    <select
+      value={val}
+      title="Move to day"
+      onChange={ev => { setVal(""); onMove(Number(ev.target.value)); }}
+      style={{ width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+        border: "1.5px solid #e0e0e0", background: "transparent",
+        fontSize: 10, color: "#888", padding: 0, appearance: "none",
+        WebkitAppearance: "none", textAlign: "center", outline: "none" }}>
+      <option value="" disabled>⇄</option>
+      {days.map((d, i) => i !== currentDayIdx && (
+        <option key={i} value={i}>Day {i + 1}{d.name ? `: ${d.name}` : ""}</option>
+      ))}
+    </select>
+  );
+}
+
 // ─── TRIP CARD COMPONENT ─────────────────────────────────────────────────────
 function TripCard({ trip, entries, onDelete, onComplete, onReactivate, past, friendState, allUsers, onInviteFriend, onAddPlaces, onImportToLogs, onImportSingle, onUpdate, onEdit, onShare, focusSection, onFocusHandled, onViewProfile }) {
   const cardRef = useRef(null);
@@ -4317,6 +4336,19 @@ Return ONLY valid JSON, no explanation, no markdown fences:
     const newDays = trip.plan.days.map((d, i) =>
       i === dayIdx ? { ...d, entries: (d.entries || d.items || []).filter(e => e.id !== entryId) } : d
     );
+    onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
+  };
+
+  const movePlace = (fromDayIdx, entryId, toDayIdx) => {
+    if (!onUpdate) return;
+    const fromDay = trip.plan.days[fromDayIdx];
+    const entry = (fromDay.entries || fromDay.items || []).find(e => e.id === entryId);
+    if (!entry) return;
+    const newDays = trip.plan.days.map((d, i) => {
+      if (i === fromDayIdx) return { ...d, entries: (d.entries || d.items || []).filter(e => e.id !== entryId) };
+      if (i === toDayIdx) return { ...d, entries: [...(d.entries || d.items || []), entry] };
+      return d;
+    });
     onUpdate({ ...trip, plan: { ...trip.plan, days: newDays } });
   };
 
@@ -5065,6 +5097,14 @@ Return ONLY valid JSON, no explanation, no markdown fences:
                                 letterSpacing: "0.03em" }}>
                               Log
                             </button>
+                          )}
+                          {/* Move to day */}
+                          {onUpdate && trip.plan.days.length > 1 && (
+                            <MoveDaySelect
+                              days={trip.plan.days}
+                              currentDayIdx={dayIdx}
+                              onMove={toDayIdx => movePlace(dayIdx, e.id, toDayIdx)}
+                            />
                           )}
                           {/* Remove */}
                           {onUpdate && (
