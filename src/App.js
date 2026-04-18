@@ -2806,7 +2806,7 @@ function FeedTab({ entries, friendState, pendingIncoming, setPendingIncoming, se
 }
 
 // ─── NETWORK TAB ─────────────────────────────────────────────────────────────
-function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming, currentUser, friendProfiles }) {
+function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendingIncoming, setPendingIncoming, currentUser, friendProfiles, setFriendProfiles }) {
   const [search, setSearch] = useState("");
   const [networkSection, setNetworkSection] = useState("friends");
   const [searchResults, setSearchResults] = useState([]);
@@ -2854,10 +2854,24 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
     setPendingIncoming(p => p.filter(r => r.from !== req.from));
   };
 
+  const removeFriend = async (profileId) => {
+    if (!window.confirm("Remove this friend from your network?")) return;
+    setFriendState(s => { const n = { ...s }; delete n[profileId]; return n; });
+    setFriendProfiles(p => p.filter(u => u.id !== profileId));
+    await supabase.from("friendships").delete()
+      .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${profileId}),and(user_id.eq.${profileId},friend_id.eq.${currentUser.id})`);
+  };
+
   const getStateBtn = (u) => {
     const state = friendState[u.id];
     if (state === "friend") return (
-      <span style={{ color: "#4ade80", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#14532d", border: "1px solid #16a34a", borderRadius: 6, padding: "4px 10px" }}>✓ Friends</span>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ color: "#4ade80", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#14532d", border: "1px solid #16a34a", borderRadius: 6, padding: "4px 10px" }}>✓ Friends</span>
+        <button onClick={e => { e.stopPropagation(); removeFriend(u.id); }}
+          style={{ color: "#ef4444", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11, background: "#fff0f0", border: "1px solid #fca5a5", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}>
+          Remove
+        </button>
+      </div>
     );
     if (state === "pending") return (
       <button onClick={e => { e.stopPropagation(); cancelRequest(u.id); }}
@@ -2896,7 +2910,7 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
               </div>
             </div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
-              {user.tags.slice(0,2).map(t => <TravelerTag key={t} tag={t} />)}
+              {(user.tags || []).slice(0,2).map(t => <TravelerTag key={t} tag={t} />)}
             </div>
             <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
               <span style={{ color: "#4ade80", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: 11 }}>{mustGo} must-go</span>
@@ -3032,7 +3046,27 @@ function NetworkTab({ entries, onViewProfile, friendState, setFriendState, pendi
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {friends.map(u => <UserRow key={u.id} user={u} onClick={() => onViewProfile(u.id)} />)}
+                  {friends.map(u => (
+                    <div key={u.id} style={{ background: "#fff", border: "1px solid #efefef", borderRadius: 12, padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", cursor: "pointer" }}
+                      onClick={() => onViewProfile(u.id)}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 42, height: 42, background: "#f0f0f0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+                          {u.avatar || "✈️"}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 16, color: "#000", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>{u.name}</div>
+                          <div style={{ fontSize: 11, color: "#555", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>@{u.username}</div>
+                        </div>
+                        <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                          <span style={{ color: "#4ade80", fontSize: 11, background: "#14532d", border: "1px solid #16a34a", borderRadius: 6, padding: "4px 10px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>✓ Friends</span>
+                          <button onClick={() => removeFriend(u.id)}
+                            style={{ color: "#ef4444", fontSize: 11, background: "#fff0f0", border: "1px solid #fca5a5", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -5373,7 +5407,7 @@ function getPlacePhoto(entry) {
 }
 
 // ─── EXPLORE TAB COMPONENT ───────────────────────────────────────────────────
-function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBookmarks, onToggleBookmark, currentUserId }) {
+function ExploreTab({ entries, friendState, savedTrips, onAddToTrip, onViewProfile, savedBookmarks, onToggleBookmark, currentUserId }) {
   const [exploreTab, setExploreTab] = useState("network"); // network | foryou
   // Network filters
   const [networkCategory, setNetworkCategory] = useState("all");
@@ -5384,7 +5418,7 @@ function ExploreTab({ entries, savedTrips, onAddToTrip, onViewProfile, savedBook
 
   const allUsers = ALL_USERS;
   // Friends entries only (not current user u1)
-  const networkEntries = entries.filter(e => e.userId !== currentUserId && !e.isActivity);
+  const networkEntries = entries.filter(e => e.userId !== currentUserId && !e.isActivity && friendState?.[e.userId] === "friend");
 
   const filteredNetwork = networkEntries.filter(e => {
     if (networkSearch.trim()) {
@@ -7152,6 +7186,7 @@ function MainApp({ user, onLogout }) {
         {tab === "explore" && (
           <ExploreTab
             entries={entries}
+            friendState={friendState}
             savedTrips={savedTrips}
             savedBookmarks={savedBookmarks}
             onToggleBookmark={async id => {
@@ -7397,12 +7432,13 @@ function MainApp({ user, onLogout }) {
                 setPendingIncoming={setPendingIncoming}
                 currentUser={currentUser}
                 friendProfiles={friendProfiles}
+                setFriendProfiles={setFriendProfiles}
               />
             </div>
           </div>
         </div>
       )}
-      {(showTripModal || editingTrip) && <TripPlannerModal entries={entries}
+      {(showTripModal || editingTrip) && <TripPlannerModal entries={entries.filter(e => e.userId === currentUser.id || friendState[e.userId] === "friend")}
         onClose={() => { setShowTripModal(false); setEditingTrip(null); }}
         savedTrips={savedTrips}
         editTrip={editingTrip || null}
